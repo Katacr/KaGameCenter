@@ -1,0 +1,5 @@
+language: zh_CN
+
+demo:
+  world-name: kagamecenter_demo_flat
+  create-flat-if-missing: true

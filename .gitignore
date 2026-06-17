@@ -1,0 +1,46 @@
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Gradle / build output
+.gradle/
+build/
+out/
+
+# IDE metadata
+.idea/
+.idea_modules/
+.vscode/
+*.iml
+
+# Runtime logs and crash dumps
+logs/
+crash-reports/
+hs_err_pid*
+replay_pid*
+*.log
+*.hprof
+
+# Local test server/runtime data
+run/
+plugins/
+world/
+world_nether/
+world_the_end/
+libraries/
+paper-*.jar
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Temporary Minecraft world markers
+session.lock
+uid.dat
+
+# Third-party source map archive kept locally for migration reference
+/Map-MiniGames/
+/info/

@@ -1,0 +1,23 @@
+name: KaGameCenter
+version: '${version}'
+
+main: org.katacr.kaGameCenter.KaGameCenter
+api-version: '1.21'
+load: POSTWORLD
+softdepend:
+  - KaMenu
+  - PlaceholderAPI
+  - Multiverse-Core
+  - WorldEdit
+commands:
+  kagamecenter:
+    description: KaGameCenter game and map management command
+    usage: /kagamecenter <menu|games|rooms|maps|create|join|quickjoin|start|leave|close|stats>
+    aliases: [kgc]
+permissions:
+  kagamecenter.user:
+    description: Allows using KaGameCenter player commands
+    default: true
+  kagamecenter.admin:
+    description: Allows using KaGameCenter admin commands
+    default: op
