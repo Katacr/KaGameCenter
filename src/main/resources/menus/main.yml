@@ -1,0 +1,36 @@
+Title: "{menu.main_title}"
+Settings:
+  can_escape: true
+  after_action: "NONE"
+
+Body:
+  intro:
+    type: "message"
+    width: 320
+    text:
+      - "{menu.main_line_1}"
+      - "{menu.main_line_2}"
+
+Bottom:
+  type: "multi"
+  columns: 2
+  buttons:
+    create:
+      text: "{menu.button_create_room}"
+      width: 150
+      actions:
+        - "kgc:open-create-game"
+    rooms:
+      text: "{menu.button_join_room_list}"
+      width: 150
+      actions:
+        - "kgc:open-rooms"
+    leave:
+      text: "{menu.button_leave}"
+      width: 150
+      actions:
+        - "kgc:leave"
+  exit:
+    text: "{menu.button_close}"
+    actions:
+      - "close"

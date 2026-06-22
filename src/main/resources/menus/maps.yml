@@ -1,0 +1,4 @@
+Title: "{menu.maps_title}"
+Settings:
+  can_escape: true
+  after_action: "NONE"

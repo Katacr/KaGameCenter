@@ -9,15 +9,27 @@ softdepend:
   - PlaceholderAPI
   - Multiverse-Core
   - WorldEdit
+  - PacketEvents
 commands:
   kagamecenter:
     description: KaGameCenter game and map management command
-    usage: /kagamecenter <menu|games|rooms|maps|create|join|quickjoin|start|leave|close|stats>
+    usage: /kagamecenter help
     aliases: [kgc]
+  globalchat:
+    description: Send a server global chat message while in a game room
+    usage: /g <message>
+    aliases: [g]
+  allchat:
+    description: Send a room chat message to players and spectators in the current room
+    usage: /a <message>
+    aliases: [a]
 permissions:
   kagamecenter.user:
     description: Allows using KaGameCenter player commands
     default: true
   kagamecenter.admin:
     description: Allows using KaGameCenter admin commands
+    default: op
+  kagamecenter.chat.spy:
+    description: Allows receiving room/team chat spy messages when enabled in config
     default: op

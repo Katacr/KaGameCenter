@@ -1,0 +1,34 @@
+title: "&0游戏中心"
+layout:
+  - "#########"
+  - "#   C   #"
+  - "#   R   #"
+  - "#########"
+
+buttons:
+  "#":
+    display:
+      material: GRAY_STAINED_GLASS_PANE
+      name: " "
+  "C":
+    display:
+      material: LIME_DYE
+      name: "&a创建房间"
+      lore:
+        - "&7选择小游戏配置并创建房间。"
+        - "&e左键打开"
+    actions:
+      left:
+        - "kgc:open-create-game"
+        - "sound: UI_BUTTON_CLICK 1 1"
+  "R":
+    display:
+      material: COMPASS
+      name: "&e加入房间"
+      lore:
+        - "&7浏览当前全部房间。"
+        - "&e左键打开"
+    actions:
+      left:
+        - "kgc:open-rooms"
+        - "sound: UI_BUTTON_CLICK 1 1"

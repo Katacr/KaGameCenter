@@ -1,0 +1,58 @@
+Title: "{menu.rooms_title}"
+Settings:
+  can_escape: true
+  after_action: "NONE"
+
+Body:
+  intro:
+    type: "message"
+    width: 320
+    text: "{menu.rooms_line}"
+
+Bottom:
+  type: "multi"
+  columns: 3
+  buttons:
+    header_detail:
+      text: "{menu.button_room_detail}"
+      width: 300
+      actions:
+        - "kgc:open-rooms"
+      tooltip:
+        - "{menu.rooms_line}"
+    create:
+      text: "{menu.button_create_room}"
+      width: 54
+      actions:
+        - "kgc:open-create-game"
+    top_refresh:
+      text: "{menu.button_refresh}"
+      width: 54
+      actions:
+        - "kgc:open-rooms"
+    rooms:
+      TYPE: "room_rows"
+      info-text: "&8[&e{room.id}&8] &f{room.name} &8[&a{room.game_name}&8][&d{room.map_id}&8] &8[&b{room.players}&7/&b{room.max_players}&8] &6{room.state}"
+      info-width: 300
+      info-actions:
+        - "{room.info_action}"
+      info-tooltip:
+        - "&7服务器: &f{room.server_id}"
+        - "&7游戏: &f{room.game_name}"
+        - "&7地图: &f{room.map_template}"
+        - "&7世界: &f{room.world}"
+      join-text: "{menu.button_join_short}"
+      join-width: 54
+      join-actions:
+        - "{room.join_action}"
+      spectate-text: "{menu.button_spectate_short}"
+      spectate-width: 54
+      spectate-actions:
+        - "{room.spectate_action}"
+      empty-text: "{room.status_empty}"
+      empty-actions:
+        - "kgc:open-rooms"
+  exit:
+    text: "{menu.button_back}"
+    actions:
+      - "kgc:open-main"

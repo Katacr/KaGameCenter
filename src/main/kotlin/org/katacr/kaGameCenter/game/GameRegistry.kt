@@ -5,7 +5,9 @@ class GameRegistry(private val gameManager: GameManager) {
 
     fun register(module: GameModule) {
         modules[module.id.lowercase()] = module
-        gameManager.register(module.defaultDefinition())
+        if (gameManager.get(module.id) == null) {
+            gameManager.register(module.defaultDefinition())
+        }
     }
 
     fun get(id: String): GameModule? = modules[id.lowercase()]

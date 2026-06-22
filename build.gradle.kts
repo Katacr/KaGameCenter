@@ -21,6 +21,12 @@ repositories {
     maven("https://repo.extendedclip.com/releases/") {
         name = "placeholderapi"
     }
+    maven("https://repo.codemc.io/repository/maven-releases/") {
+        name = "codemc-releases"
+    }
+    maven("https://repo.codemc.io/repository/maven-snapshots/") {
+        name = "codemc-snapshots"
+    }
 }
 
 dependencies {
@@ -28,8 +34,11 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib")
     compileOnly("me.clip:placeholderapi:2.11.6")
+    compileOnly("com.github.retrooper:packetevents-spigot:2.12.2")
     compileOnly("org.xerial:sqlite-jdbc:3.46.1.0")
     compileOnly("com.zaxxer:HikariCP:5.1.0")
+    compileOnly("com.google.code.gson:gson:2.10.1")
+    compileOnly("io.lettuce:lettuce-core:6.3.2.RELEASE")
 }
 
 kotlin {

@@ -29,6 +29,23 @@ class GameTeamService {
         return roomTeams[roomId]?.get(teamId)
     }
 
+    fun getTeams(roomId: String): List<GameTeam> {
+        return roomTeams[roomId]?.values?.toList().orEmpty()
+    }
+
+    fun getMembers(roomId: String, teamId: String): Set<UUID> {
+        return teamMembers[roomId]
+            ?.filterValues { it.equals(teamId, ignoreCase = true) }
+            ?.keys
+            ?.toSet()
+            .orEmpty()
+    }
+
+    fun getUngroupedPlayers(roomId: String, players: Collection<UUID>): Set<UUID> {
+        val assigned = teamMembers[roomId]?.keys.orEmpty()
+        return players.filterNot { assigned.contains(it) }.toSet()
+    }
+
     fun clearRoom(roomId: String) {
         roomTeams.remove(roomId)
         teamMembers.remove(roomId)

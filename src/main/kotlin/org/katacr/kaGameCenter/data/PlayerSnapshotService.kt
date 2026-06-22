@@ -35,6 +35,8 @@ class PlayerSnapshotService {
         player.totalExperience = snapshot.totalExperience
         player.allowFlight = snapshot.allowFlight
         player.isFlying = snapshot.flying
+        player.isInvisible = snapshot.invisible
+        player.isInvulnerable = snapshot.invulnerable
         player.inventory.contents = snapshot.inventory
         player.inventory.armorContents = snapshot.armorContents
         player.inventory.extraContents = snapshot.extraContents

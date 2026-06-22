@@ -1,0 +1,38 @@
+Title: "{menu.games_title}"
+Settings:
+  can_escape: true
+  after_action: "NONE"
+
+Body:
+  intro:
+    type: "message"
+    width: 320
+    text: "{menu.games_line}"
+
+Bottom:
+  type: "multi"
+  columns: 1
+  buttons:
+    games:
+      TYPE: "game_list"
+      include-disabled: true
+      text: "&a[ {game.name} ]"
+      actions:
+        - "kgc:open-create-map {game.id}"
+      tooltip:
+        - "&7ID: &f{game.id}"
+        - "&7人数: &f{game.min_players}-{game.max_players}"
+        - "&7时长: &f{game.duration}s"
+        - "&7前置: &f{game.required_plugins}"
+        - "&7可选: &f{game.optional_plugins}"
+      empty-text: "{command.no_games}"
+      empty-actions:
+        - "kgc:open-main"
+    refresh:
+      text: "{menu.button_refresh}"
+      actions:
+        - "kgc:open-games"
+  exit:
+    text: "{menu.button_back}"
+    actions:
+      - "kgc:open-main"

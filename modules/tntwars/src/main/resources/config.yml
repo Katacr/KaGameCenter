@@ -1,0 +1,88 @@
+id: tntwars
+name: "TNT Wars"
+enabled: true
+main: jar
+jar: "../tntwars.jar"
+entrypoint: "org.katacr.kagamecenter.tntwars.TntWarsModuleProvider"
+description: "External managed TNT Wars module."
+
+game:
+  display-name: "TNT Wars"
+  min-players: 2
+  max-players: 16
+  start-countdown-seconds: 5
+  duration-seconds: 600
+  result-display-seconds: 10
+  close-delay-seconds: 6
+  void-y: -70.0
+  item-interval-seconds: 10
+  initial-item-delay-seconds: 10
+  resistance-amplifier: 25
+  glowing-enabled: true
+
+items:
+  give-per-player: 1
+  consume-on-use: true
+  pool:
+    tnt_minecart:
+      enabled: true
+      weight: 3
+      fuse-ticks: 50
+      velocity: 1.4
+      power: 4.0
+    tnt:
+      enabled: true
+      weight: 2
+      fuse-ticks: 50
+      velocity: 1.2
+      power: 4.0
+    long_tnt:
+      enabled: true
+      weight: 2
+      fuse-ticks: 50
+      velocity: 2.0
+      power: 4.0
+    creeper:
+      enabled: true
+      weight: 3
+      fuse-ticks: 60
+      velocity: 1.4
+      power: 3.0
+    fireball:
+      enabled: true
+      weight: 5
+      velocity: 1.5
+      power: 5
+    tnt_bow:
+      enabled: true
+      weight: 2
+      fuse-ticks: 80
+      power: 4.0
+    tnt_rain:
+      enabled: true
+      weight: 1
+      duration-seconds: 10
+      drops-per-second: 4
+      power: 4.0
+    creeper_rain:
+      enabled: true
+      weight: 1
+      fuse-ticks: 30
+      duration-seconds: 10
+      drops-per-second: 2
+      power: 3.0
+    fireball_rain:
+      enabled: true
+      weight: 1
+      duration-seconds: 10
+      drops-per-second: 2
+      power: 4.0
+
+maps:
+  default:
+    display-name: "默认地图"
+    template: "tntwars/default"
+
+spectator:
+  enabled: true
+  mode: "managed"

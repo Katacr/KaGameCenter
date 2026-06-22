@@ -25,7 +25,7 @@ replay_pid*
 # Local test server/runtime data
 run/
 plugins/
-world/
+
 world_nether/
 world_the_end/
 libraries/
@@ -44,3 +44,4 @@ uid.dat
 # Third-party source map archive kept locally for migration reference
 /Map-MiniGames/
 /info/
+/packetevents-2.0/

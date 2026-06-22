@@ -1,0 +1,84 @@
+id: blockhunt
+name: "方块躲猫猫"
+enabled: true
+main: jar
+jar: "../blockhunt.jar"
+entrypoint: "org.katacr.kagamecenter.blockhunt.BlockhuntModuleProvider"
+description: "External managed Block Hunt module."
+
+game:
+  display-name: "方块躲猫猫"
+  min-players: 2
+  max-players: 16
+  start-countdown-seconds: 5
+  duration-seconds: 300
+  hunter-release-seconds: 20
+  frenzy-seconds: 20
+  result-display-seconds: 12
+  close-delay-seconds: 8
+  hunter-ratio: 0.25
+  caught-hider-becomes-hunter: true
+  hider-speed-frenzy-amplifier: 2
+  hider-lock-double-sneak-ms: 450
+  disguise-refresh-seconds: 45
+  disguise-whitelist:
+    - GRASS_BLOCK
+    - DIRT
+    - COARSE_DIRT
+    - PODZOL
+    - ROOTED_DIRT
+    - STONE
+    - COBBLESTONE
+    - STONE_BRICKS
+    - SMOOTH_STONE
+    - OAK_LOG
+    - SPRUCE_LOG
+    - BIRCH_LOG
+    - OAK_PLANKS
+    - SPRUCE_PLANKS
+    - BIRCH_PLANKS
+    - OAK_LEAVES
+    - SPRUCE_LEAVES
+    - BIRCH_LEAVES
+    - GLASS
+    - BOOKSHELF
+    - BARREL
+    - CHEST
+    - HAY_BLOCK
+    - SAND
+    - SANDSTONE
+    - GRAVEL
+    - BRICKS
+    - TERRACOTTA
+    - WHITE_WOOL
+    - RED_WOOL
+    - BLUE_WOOL
+    - CRAFTING_TABLE
+    - FURNACE
+    - LECTERN
+    - SEA_LANTERN
+    - GLOWSTONE
+    - QUARTZ_BLOCK
+
+items:
+  refresh-seconds: 30
+  pickup-duration-seconds: 25
+  pickup-scale: 1.5
+  max-active-per-role: 1
+  hunter-snowballs: 16
+  hunter-glow-seconds: 5
+  hunter-probe-radius: 10
+  hunter-probe-uses: 3
+  hider-blind-seconds: 5
+  hider-freeze-seconds: 5
+  hider-fake-block-seconds: 30
+  hider-invisible-seconds: 5
+
+maps:
+  default:
+    display-name: "默认地图"
+    template: "blockhunt/default"
+
+spectator:
+  enabled: true
+  mode: "managed"

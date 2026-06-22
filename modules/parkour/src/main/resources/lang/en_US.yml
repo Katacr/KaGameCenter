@@ -1,0 +1,107 @@
+parkour:
+  joined: "Joined parkour room {0}."
+  left: "Left parkour room."
+  ended: "Parkour room {0} ended."
+  config_missing: "Parkour configuration is incomplete; cannot start."
+  countdown_started: "Parkour starts in {0} seconds."
+  countdown_title: "§e{0}"
+  countdown_subtitle: "§7Get ready"
+  go_title: "§aGo!"
+  go_subtitle: "§7Run to the finish"
+  checkpoint_reached: "§aReached {0}"
+  checkpoint_returned: "§eReturned to the last checkpoint."
+  buff_speed: "§bSpeed II for {0} seconds."
+  finished: "§aFinished parkour! Time {0}, preview points +{1}."
+  finish_countdown_started: "§eFirst player finished. Ending in {0} seconds."
+  remaining_actionbar: "§7Remaining §f{0}m"
+  result_header: "§6Parkour Results"
+  result_empty: "§7No results."
+  result_line_finished: "§e#{0} §f{1} §a{2}"
+  result_line_distance: "§e#{0} §f{1} §7{2}m"
+  result_rewards_preview: "§7Reward preview: exp/coins are reserved and display-only for now."
+  admin_reloaded: "§aParkour config reloaded."
+  admin_saved: "§aSaved {0}: §f{1}/{2}"
+  admin_checkpoint_added: "§aSaved checkpoint {0}: §f{1}/{2}"
+  admin_checkpoint_removed: "§aRemoved checkpoint: {0}"
+  admin_checkpoint_missing: "§cCheckpoint not found: {0}"
+  admin_buff_added: "§aSaved Speed buff {0}: §f{1}/{2}"
+  admin_buff_removed: "§aRemoved buff: {0}"
+  admin_buff_missing: "§cBuff not found: {0}"
+  admin_map_missing: "§cMap not found: {0}"
+  admin_route_missing: "§cRoute not found: {0}/{1}"
+  admin_edit_opened: "§aOpened map editor world: §f{0} §7({1})"
+  admin_edit_failed: "§cFailed to open map editor world: {0}"
+  admin_edit_saved: "§aSaved editor world back to template: {0}"
+  admin_edit_save_failed: "§cFailed to save editor world: {0}"
+  admin_edit_closed: "§aClosed editor world: {0}"
+  admin_edit_close_failed: "§cFailed to close editor world: {0}"
+  admin_preview: "§aPreviewing current selection for 10 seconds."
+  admin_preview_all: "§aPreviewing all checkpoints and finish: §f{0}/{1}"
+  editor_title: "§6Edit Parkour Game: {0}"
+  editor_summary_name: "§7Editing: §f{0}"
+  editor_summary_shared_map: "§7Shared template: §f{0}"
+  editor_summary_runtime_map: "§7Runtime map: §f{0}"
+  editor_summary_private_map: "§7Private snapshot: {0}"
+  editor_summary_route: "§7Current route: §f{0}"
+  editor_summary_lobby: "§7Lobby: {0}"
+  editor_summary_start_spawn: "§7Start spawn: {0}"
+  editor_summary_start_region: "§7Start region: {0}"
+  editor_summary_finish: "§7Finish: {0}"
+  editor_summary_checkpoints: "§7Checkpoints: §f{0}"
+  editor_summary_buffs: "§7Buffs: §f{0}"
+  editor_input_route: "§bSelect route"
+  editor_input_checkpoint_index: "§bCheckpoint number"
+  editor_input_buff: "§bBuff id"
+  editor_button_open_world: "§aOpen Editor World"
+  editor_button_save_world: "§eSave Private Snapshot"
+  editor_button_close_world: "§cClose Editor World"
+  editor_button_save_route: "§bSave Route Selection"
+  editor_button_set_lobby: "§aSet Lobby"
+  editor_button_set_start: "§aSet Start"
+  editor_button_set_start_region: "§aSet Start Region"
+  editor_button_set_finish: "§aSet Finish"
+  editor_button_add_checkpoint: "§aAdd Checkpoint"
+  editor_button_remove_checkpoint: "§cRemove Checkpoint"
+  editor_button_add_buff: "§bAdd Speed Pickup"
+  editor_button_remove_buff: "§cRemove Pickup"
+  editor_button_preview: "§ePreview Route"
+  editor_status_set: "§aSet"
+  editor_status_missing: "§cMissing"
+  editor_private_snapshot_failed: "§cFailed to create the private map snapshot."
+  editor_open_failed: "§cFailed to open the private editor world."
+  editor_opened: "§aOpened private editor world: §f{0}"
+  editor_saved: "§aSaved the private map snapshot."
+  editor_save_failed: "§cFailed to save the private map snapshot."
+  editor_closed: "§aClosed the private editor world."
+  editor_close_failed: "§cFailed to close the private editor world."
+  editor_route_saved: "§aSaved route selection: §f{0}"
+  editor_saved_field: "§aSaved: §f{0}"
+  editor_field_lobby: "Lobby"
+  editor_field_start: "Start spawn"
+  editor_field_start_region: "Start region"
+  editor_field_finish: "Finish region"
+  editor_checkpoint_id_missing: "§cEnter a checkpoint number to remove."
+  editor_checkpoint_added: "§aAdded checkpoint: §f{0}"
+  editor_buff_id_missing: "§cEnter a pickup id."
+  editor_buff_added: "§aAdded speed pickup: §f{0}"
+  editor_previewed: "§aPreviewing this game's checkpoints and finish for 10 seconds."
+  admin_help: |-
+    §6Parkour Admin Commands
+    §e/{0} admin parkour reload §7Reload parkour config
+    §e/{0} admin parkour edit <map> §7Create an editor world and enter edit mode
+    §e/{0} admin parkour saveedit [map] §7Save the current editor world back to the template folder
+    §e/{0} admin parkour closeedit [map] §7Save and close the editor world
+    §e/{0} admin parkour maps §7List maps
+    §e/{0} admin parkour routes <map> §7List routes
+    §e/{0} admin parkour setlobby <map> <route> §7Set waiting lobby
+    §e/{0} admin parkour setstart <map> <route> §7Set start spawn
+    §e/{0} admin parkour setstartregion <map> <route> §7Set start region from current selection
+    §e/{0} admin parkour addcheckpoint <map> <route> <id> §7Add checkpoint from current selection, current position as respawn
+    §e/{0} admin parkour addcheckpoint [number] §7Add a checkpoint in the current managed game editor world; auto-numbered when omitted
+    §e/{0} admin parkour setfinish <map> <route> §7Set finish region from current selection
+    §e/{0} admin parkour removecheckpoint <map> <route> <id> §7Remove checkpoint
+    §e/{0} admin parkour removecheckpoint <number> §7Remove a checkpoint from the current managed game editor world
+    §e/{0} admin parkour addspeedbuff <map> <route> <id> §7Add Speed II pickup at current position
+    §e/{0} admin parkour removebuff <map> <route> <id> §7Remove pickup
+    §e/{0} admin parkour preview §7Preview current selection
+    §e/{0} admin parkour previewall <map> <route> §7Preview all checkpoints and the finish of a route

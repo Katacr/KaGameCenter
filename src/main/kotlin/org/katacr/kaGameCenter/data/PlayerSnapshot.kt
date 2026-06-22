@@ -16,6 +16,8 @@ data class PlayerSnapshot(
     val totalExperience: Int,
     val allowFlight: Boolean,
     val flying: Boolean,
+    val invisible: Boolean,
+    val invulnerable: Boolean,
     val inventory: Array<ItemStack?>,
     val armorContents: Array<ItemStack?>,
     val extraContents: Array<ItemStack?>
@@ -33,6 +35,8 @@ data class PlayerSnapshot(
                 totalExperience = player.totalExperience,
                 allowFlight = player.allowFlight,
                 flying = player.isFlying,
+                invisible = player.isInvisible,
+                invulnerable = player.isInvulnerable,
                 inventory = player.inventory.contents.clone(),
                 armorContents = player.inventory.armorContents.clone(),
                 extraContents = player.inventory.extraContents.clone()

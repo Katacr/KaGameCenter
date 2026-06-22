@@ -1,5 +1,7 @@
 package org.katacr.kaGameCenter.game
 
+import org.katacr.kaGameCenter.spectator.SpectatorPolicy
+
 data class GameDefinition(
     val id: String,
     val displayName: String,
@@ -10,6 +12,9 @@ data class GameDefinition(
     val prepareSeconds: Int = 10,
     val countdownSeconds: Int = 10,
     val mapTemplates: List<String> = emptyList(),
+    val requiredPlugins: List<String> = emptyList(),
+    val optionalPlugins: List<String> = emptyList(),
     val resourcePack: String? = null,
+    val spectatorPolicy: SpectatorPolicy = SpectatorPolicy.DEFAULT,
     val description: String = ""
 )

@@ -2,6 +2,7 @@ package org.katacr.kaGameCenter.i18n
 
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.plugin.java.JavaPlugin
+import org.katacr.kaGameCenter.game.GameState
 import java.io.File
 import java.io.InputStream
 
@@ -28,6 +29,16 @@ class LanguageManager(private val plugin: JavaPlugin) {
 
     fun getCurrentLanguage(): String = currentLanguage
 
+    fun getStateName(state: GameState?): String {
+        return state?.let { getMessage("state.${it.name.lowercase()}") } ?: "-"
+    }
+
+    fun getStateName(stateName: String?): String {
+        if (stateName.isNullOrBlank() || stateName == "-") return stateName ?: "-"
+        val key = "state.${stateName.lowercase()}"
+        return getOptionalMessage(key) ?: stateName
+    }
+
     fun getMessage(key: String, vararg args: Any): String {
         var message = messages[key] ?: getDefaultMessage(key) ?: run {
             plugin.logger.warning("not found lang key: $key")
@@ -38,6 +49,10 @@ class LanguageManager(private val plugin: JavaPlugin) {
             message = message.replace("{$index}", arg.toString())
         }
         return message
+    }
+
+    fun getOptionalMessage(key: String): String? {
+        return messages[key] ?: getDefaultMessage(key)
     }
 
     private fun saveDefaultMessages() {

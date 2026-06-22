@@ -11,9 +11,6 @@ class GameMapManager(
     private val mapsFolder: File
         get() = File(plugin.dataFolder, "maps")
 
-    private val gamesFile: File
-        get() = File(plugin.dataFolder, "games.yml")
-
     init {
         ensureMapsFolder()
     }
@@ -37,7 +34,6 @@ class GameMapManager(
     fun listMaps(gameId: String): List<GameMapInfo> {
         ensureMapsFolder()
         val normalizedGame = normalizeName(gameId) ?: return emptyList()
-        val activeMaps = gameManager.get(normalizedGame)?.mapTemplates.orEmpty().toSet()
         val gameFolder = File(mapsFolder, normalizedGame)
         if (!gameFolder.exists() || !gameFolder.isDirectory) return emptyList()
 
@@ -50,7 +46,7 @@ class GameMapManager(
                     mapId = folder.name,
                     relativePath = relativePath,
                     folder = folder,
-                    active = activeMaps.contains(relativePath)
+                    active = true
                 )
             }
             ?.sortedBy { it.mapId.lowercase() }
@@ -97,14 +93,7 @@ class GameMapManager(
         if (!folder.exists() || !folder.isDirectory) {
             return GameMapResult(false, "Map folder does not exist: $relativePath")
         }
-
-        val config = loadGamesConfig()
-        val gameSection = config.getConfigurationSection("games.$normalizedGame")
-            ?: config.createSection("games.$normalizedGame")
-        gameSection.set("maps", listOf(relativePath))
-        config.save(gamesFile)
-        gameManager.reload()
-        return GameMapResult(true, "Selected active map for $normalizedGame: $relativePath")
+        return GameMapResult(true, "Map template is available: $relativePath")
     }
 
     fun removeMap(gameId: String, mapId: String): GameMapResult {
@@ -126,26 +115,12 @@ class GameMapManager(
             return GameMapResult(false, "Failed to delete map folder: $relativePath")
         }
 
-        val config = loadGamesConfig()
-        val path = "games.$normalizedGame.maps"
-        val maps = config.getStringList(path).filterNot { it == relativePath }
-        config.set(path, maps)
-        config.save(gamesFile)
-        gameManager.reload()
         return GameMapResult(true, "Removed map: $relativePath")
     }
 
     fun reload(): GameMapResult {
         ensureMapsFolder()
-        gameManager.reload()
-        return GameMapResult(true, "Reloaded games.yml")
-    }
-
-    private fun loadGamesConfig(): YamlConfiguration {
-        if (!gamesFile.exists()) {
-            plugin.saveResource("games.yml", false)
-        }
-        return YamlConfiguration.loadConfiguration(gamesFile)
+        return GameMapResult(true, "Reloaded map templates")
     }
 
     private fun saveSpawn(folder: File, x: Double, y: Double, z: Double, yaw: Float, pitch: Float) {

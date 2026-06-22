@@ -1,0 +1,58 @@
+Title: "{menu.room_title}"
+
+Settings:
+  can_escape: true
+  after_action: "NONE"
+
+Body:
+  intro:
+    type: "message"
+    width: 320
+    text:
+      - "{room.game_line}"
+      - "{room.state_line}"
+      - "{room.players_line}"
+      - "{room.world_line}"
+      - "{room.owner_line}"
+      - "&7Viewer: &f{viewer.name} &8| &7Game: &f{game.id}"
+      - "&7Joinable: &f{room.can_join} &8| &7Spectators: &f{room.spectator_count}"
+
+Bottom:
+  type: "multi"
+  columns: 3
+  buttons:
+    join:
+      text: "{menu.button_join_room}"
+      actions:
+        - "kgc:join {room.id}"
+    start:
+      text: "{menu.button_start_room}"
+      actions:
+        - "kgc:start {room.id}"
+    leave:
+      text: "{menu.button_leave}"
+      actions:
+        - "kgc:leave"
+    close_room:
+      text: "{menu.button_close_room}"
+      actions:
+        - "kgc:close-room {room.id}"
+    refresh:
+      text: "{menu.button_refresh}"
+      actions:
+        - "kgc:open-room {room.id}"
+    member_slots:
+      TYPE: "player_slots"
+      text: "{menu.member_button}"
+      empty-text: "{menu.member_empty}"
+      actions:
+        - "kgc:open-member {room.id} {player.uuid}"
+      tooltip:
+        - "{menu.member_tooltip}"
+        - "&7Online: &f{player.online}"
+        - "&7Owner: &f{player.is_owner}"
+        - "&7Team: &f{player.team_name}"
+  exit:
+    text: "{menu.button_back}"
+    actions:
+      - "kgc:open-rooms"

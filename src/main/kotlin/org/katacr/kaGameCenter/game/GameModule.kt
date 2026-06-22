@@ -1,5 +1,7 @@
 package org.katacr.kaGameCenter.game
 
+import org.katacr.kaGameCenter.spectator.SpectatorPolicy
+
 interface GameModule {
     val id: String
     val displayName: String
@@ -14,6 +16,8 @@ interface GameModule {
             maxPlayers = maxPlayers
         )
     }
+
+    fun spectatorPolicy(room: GameRoom): SpectatorPolicy = room.definition?.spectatorPolicy ?: SpectatorPolicy.DEFAULT
 
     fun createSession(room: GameRoom): GameSession
 }

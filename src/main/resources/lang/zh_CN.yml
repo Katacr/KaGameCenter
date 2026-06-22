@@ -2,12 +2,61 @@ plugin:
   enabled: "KaGameCenter 已启用。"
   disabled: "KaGameCenter 已关闭。"
 
+world:
+  cleanup_stale_temporary: "已清理 {0} 个残留临时世界。"
+
+startup:
+  status_enabled: "已启用"
+  status_disabled: "未启用"
+  status_enabled_detail: "已启用 ({0})"
+  version: "§7版本: §f{0}"
+  minecraft: "§7Minecraft: §f{0}"
+  language: "§7语言: §f{0}"
+  database: "§7数据库: §f{0}"
+  modules: "§7模块: §f{0} §7[{1}]"
+  games: "§7游戏: §f{0}"
+  kamenu: "§7KaMenu: §f{0}"
+  placeholderapi: "§7PlaceholderAPI: §f{0}"
+  packet: "§7发包后端: §f{0}"
+  velocity: "§7Velocity桥接: §f{0}"
+
 command:
   only_player_dialog: "只有玩家可以打开对话框演示。"
   only_player_join: "只有玩家可以加入房间。"
   only_player_leave: "只有玩家可以离开房间。"
   only_player_enter: "只有玩家可以进入测试世界。"
-  usage: "用法: /{0} <menu|games|rooms|maps|create|join|quickjoin|start|leave|close|stats>；地图: /{0} maps <game> <list|create|select|remove|setspawn|reload> [map]"
+  only_player_packet: "只有玩家可以执行发包测试。"
+  only_player_icon: "只有玩家可以执行图标文本测试。"
+  usage: "用法: /{0} help；管理员用法: /{0} admin help"
+  help: |-
+    §6KaGameCenter 指令
+    §e/{0} help §7查看帮助
+    §e/{0} menu §7打开游戏中心菜单
+    §e/{0} chest [menuId] §7打开箱子菜单版游戏中心
+    §e/{0} games §7查看游戏定义
+    §e/{0} rooms §7查看当前房间
+    §e/{0} create <gameId> [mapPath] [roomName] §7创建房间
+    §e/{0} join <roomId> §7加入指定房间
+    §e/{0} quickjoin [gameId] §7快速加入或创建房间
+    §e/{0} leave §7离开当前房间
+    §c/{0} admin help §7查看管理员命令
+  admin_help: |-
+    §6KaGameCenter 管理指令
+    §e/{0} admin manage §7打开小游戏配置主管理面板
+    §e/{0} admin create <gameId> §7创建房间
+    §e/{0} admin start <roomId> §7开始房间
+    §e/{0} admin close <roomId> §7关闭房间
+    §e/{0} admin stats §7查看统计快照
+    §e/{0} admin maps [gameId] [list|create|select|remove|setspawn|reload] [mapId] §7管理地图
+    §e/{0} admin packet blockself [material] [seconds] §7测试方块伪装
+    §e/{0} admin packet mobself [entityType] [seconds] §7测试生物伪装
+    §e/{0} admin packet probe [message] §7测试发包探针
+    §e/{0} admin packet blockglow [seconds] §7测试方块发光轮廓
+    §e/{0} admin packet playerglow [player] [seconds] §7测试玩家发光
+    §e/{0} admin packet drop [material] [seconds] [scale] §7测试可缩放私有道具
+    §e/{0} admin packet beam [seconds] [color] §7测试私有信标光柱
+    §e/{0} admin packet clear §7清理发包测试对象
+    §e/{0} admin icon <all|chat|title|actionbar|bossbar|scoreboard|tab|clear> [text] §7测试文本图标显示
   room_not_found: "未找到房间: {0}"
   game_not_found: "未找到游戏: {0}"
   room_full: "房间已满。"
@@ -16,6 +65,45 @@ command:
   no_games: "当前没有注册任何游戏。"
   no_stats: "当前没有记录任何统计。"
   no_permission: "你没有权限执行该操作。"
+
+packet:
+  unavailable: "PacketEvents 不可用，无法执行发包测试。"
+  sent_probe: "已发送发包探针: {0}"
+  sent_blockself: "已将你对在线玩家伪装为方块 {0}，持续 {1}s。"
+  sent_mobself: "已将你对在线玩家伪装为生物 {0}，持续 {1}s。"
+  sent_blockglow: "已对你显示目标方块发光轮廓，持续 {0}s。"
+  sent_playerglow: "已对你显示玩家 {0} 发光，持续 {1}s。"
+  sent_drop: "已在你前方显示私有道具 {0}，持续 {1}s，缩放 {2}。"
+  sent_beam: "已在你前方显示私有信标光柱 {0}，持续 {1}s。"
+  cleared: "已清理你的发包测试视觉对象。"
+
+spectator:
+  not_allowed: "该房间当前不允许观战。"
+  action_joined: "正在观战房间 {0}"
+  action_left: "已退出观战"
+  item_follow: "切换跟随玩家"
+  item_menu: "观战菜单"
+  item_leave: "退出观战"
+  following: "正在跟随 {0}"
+
+icon:
+  usage: "用法: /{0} admin icon <all|chat|title|actionbar|bossbar|scoreboard|tab|clear> [text]，示例: /{0} admin icon all &item:[diamond] <head:Steve>"
+  sent: "已发送图标文本测试: {0}"
+  cleared: "已清理图标文本测试显示。"
+
+chat:
+  global_usage: "用法: /{0} <消息>"
+  room_usage: "用法: /{0} <消息>"
+  not_in_room: "你当前不在任何房间中。"
+  global_format: "§7[全局] §f{0}: §r{1}"
+  room_format: "§8[§e房间 {0}§8] §7{1} §f{3}: §r{4}"
+  team_format: "§8[§b队伍 {2}§8] §f{3}: §r{4}"
+  spy_format: "§8[§7旁听 {0}§8] §7{1}"
+
+selection:
+  point_set: "§a已设置 {0}: §f{1} {2} {3} {4}"
+  ready: "§a选区已就绪: §f{0} ({1},{2},{3}) -> ({4},{5},{6})"
+  not_ready: "§c请先使用石斧左键/右键选择一个区域。"
 
 dialog:
   main_title: "KaGameCenter"
@@ -33,22 +121,64 @@ room:
   started: "已启动房间: {0}"
   closed: "已关闭房间: {0}"
   joined: "已加入房间: {0}"
+  spectating: "正在观战房间: {0}"
   left: "已离开当前房间。"
   quick_joined: "已快速加入房间: {0}"
   running_actionbar: "房间 {0} 运行中: {1}s"
   status_empty: "当前没有活动房间。"
-  status_line: "{0}: game={1}, state={2}, players={3}, world={4}"
+  status_line: "{0}: name={1}, game={2}, map={3}, state={4}, players={5}, world={6}"
   room_not_joinable: "该房间当前不可加入。"
   room_full: "该房间已满。"
+  already_in_room: "你已经在一个房间内，请先离开当前房间。"
   join_failed: "加入房间失败: {0}"
+  spectate_failed: "观战房间失败: {0}"
   start_failed: "启动房间失败: {0}"
   close_failed: "关闭房间失败: {0}"
+  create_failed: "创建房间失败: {0}"
+  owner_line: "房主: {0}"
 
 stats:
   snapshot_line: "{0} {1}: plays={2}, wins={3}, losses={4}, kills={5}, deaths={6}, points={7}"
 
 game:
   definition_line: "{0}({1}): enabled={2}, players={3}-{4}, duration={5}s, maps={6}"
+  missing_required_plugins: "游戏 {0} 缺少前置插件: {1}"
+  disabled: "游戏 {0} 当前未启用。"
+
+state:
+  created: "已创建"
+  preparing: "准备中"
+  waiting: "等待中"
+  countdown: "倒计时"
+  running: "游戏中"
+  ending: "结算中"
+  closed: "已关闭"
+
+managed_game:
+  menu_title_create: "§6创建游戏"
+  menu_title_list: "§6小游戏配置列表"
+  menu_line_1: "§7主管理面板"
+  menu_line_2: "§7选择小游戏模块、公用模板地图，并生成私有游戏快照。"
+  list_line: "§7当前共有 §f{0} §7个小游戏配置。"
+  none: "§7暂无已创建的小游戏配置。"
+  input_module: "§b选择游戏模块"
+  input_map: "§b选择公用模板地图"
+  input_name: "§b填写游戏名"
+  default_name: "新的游戏"
+  button_create: "§a创建游戏"
+  button_browse: "§e浏览配置"
+  button_edit: "§b编辑"
+  tooltip_id: "§7ID: §f{0}"
+  tooltip_shared_map: "§7共享模板: §f{0}"
+  tooltip_runtime_map: "§7运行地图: §f{0}"
+  tooltip_private_map: "§7私有快照: §f{0}"
+  private_ready: "已存在"
+  private_missing: "未生成"
+  create_invalid: "§c请完整选择模块、地图并填写游戏名。"
+  create_map_mismatch: "§c所选地图不属于该小游戏模块。"
+  create_failed: "§c创建小游戏配置失败。"
+  created: "§a已创建游戏: §f{0} §7({1})"
+  private_snapshot_missing: "§c小游戏配置 {0} 缺少私有地图快照: {1}"
 
 display:
   title_joined: "已加入 {0}"
@@ -69,6 +199,22 @@ display:
   action_joined: "已加入房间 {0}"
   action_left: "已离开房间"
   action_status: "阶段 {0} | {1}/{2}"
+  tab_header: "§6{0} §7| 房间 §f{1}\n§7阶段 §f{2} §7| 人数 §f{3}/{4}"
+  tab_footer_solo: "§7个人竞技\n{0}"
+  tab_footer_teams: "{0}\n{1}"
+  tab_player: "{0}"
+  tab_team_player: "[{0}] {1}"
+  tab_ungrouped_player: "[未分队] {0}"
+  tab_slot_team: "§6[{0}]"
+  tab_slot_player: "§f{0}"
+  tab_slot_empty: "§8[空位]"
+  tab_empty_room: "§8[暂无玩家]"
+
+velocity:
+  room_server: "服务器: {0}"
+  remote_join_requested: "已请求跨服加入 {0}:{1}，请稍候。"
+  remote_join_not_ready: "跨服加入尚未接入 Paper 端入口，请先在 Velocity 使用 /kgv join {0} {1}。"
+  remote_spectate_not_ready: "跨服观战尚未接入 Paper 端入口，请先转入服务器 {0} 后观战房间 {1}。"
 
 map:
   no_games: "当前没有可浏览的游戏地图目录。"
@@ -81,13 +227,19 @@ map:
 
 menu:
   main_title: "&6游戏中心"
-  main_line_1: "&7选择小游戏、浏览房间，或管理地图。"
+  main_line_1: "&7创建房间或加入已有房间。"
   main_line_2: "&7游戏内可使用潜行+F快速打开菜单。"
   games_title: "&6游戏列表"
   games_line: "&7当前可用游戏: &f{0}"
+  create_room_game_title: "&6创建房间 - 选择已配置游戏"
+  create_room_game_line: "&7当前可创建房间的游戏: &f{0}"
+  create_room_map_title: "&6创建 {0} 房间 - 选择地图"
+  create_room_map_line: "&7可用地图: &f{0}"
+  create_room_no_maps: "&c游戏 {0} 暂无可用地图，无法创建房间。"
   rooms_title: "&6房间列表"
   rooms_line: "&7当前活动房间: &f{0}"
   room_title: "&6房间 {0}"
+  member_title: "&6玩家 {0}"
   maps_title: "&6地图管理"
   maps_line: "&7可浏览游戏地图目录: &f{0}"
   maps_game_title: "&6地图: {0}"
@@ -98,35 +250,50 @@ menu:
   create_map_title: "&6创建地图: {0}"
   create_map_line: "&7输入地图ID后会创建 plugins/KaGameCenter/maps/{0}/<地图ID>。"
   input_map_id: "&a地图ID"
+  input_room_name: "&a房间名称"
+  default_room_name: "快来一起玩吧！"
   button_games: "&a[ 游戏列表 ]"
   button_rooms: "&b[ 房间列表 ]"
+  button_create_room: "&a[ 创建房间 ]"
+  button_room_detail: "&e[ 房间详情 ]"
+  button_join_room_list: "&b[ 加入房间 ]"
+  button_create_default_room: "&a[ 创建跑酷房间 ]"
   button_quickjoin: "&e[ 快速加入跑酷 ]"
   button_maps: "&d[ 地图管理 ]"
   button_leave: "&c[ 离开房间 ]"
   button_close: "&8[ 关闭 ]"
   button_back: "&7[ 返回 ]"
+  button_refresh: "&b[ 刷新 ]"
+  chest_not_found: "未找到箱子菜单: {0}"
   button_join_room: "&a[ 加入房间 ]"
+  button_join_short: "&a[ 加入 ]"
+  button_spectate_short: "&9[ 观战 ]"
   button_start_room: "&6[ 开始游戏 ]"
   button_close_room: "&c[ 关闭房间 ]"
+  button_transfer_owner: "&6[ 转让房主 ]"
+  button_kick_player: "&c[ 踢出玩家 ]"
   button_reload_maps: "&e[ 重载地图配置 ]"
   button_create_map: "&a[ 创建地图 ]"
   button_select_map: "&a[ 设为启用地图 ]"
   button_setspawn: "&b[ 设置出生点 ]"
   game_button: "&a[ {0} ]"
+  game_tooltip_create: "&7点击创建该游戏房间。"
+  game_tooltip_select_map: "&7点击选择地图并创建房间。"
   game_tooltip_players: "&7人数: &f{0}-{1}"
   game_tooltip_duration: "&7时长: &f{0}s"
-  room_button: "&b[ {0} ] &7{1}/{2}"
+  game_tooltip_required_plugins: "&7前置插件: &f{0}"
+  game_tooltip_optional_plugins: "&7可选插件: &f{0}"
+  room_button: "&8[&e{0}&8] &f{1} &8[&a{2}&8][&d{3}&8] &8[&b{4}&7/&b{5}&8] &6{6}"
+  member_empty: "&8[ 空房间 ]"
+  member_button: "&f[ {0} ]"
+  member_tooltip: "&7UUID: &f{0}"
+  member_state_owner: "&7房主: &f{0}"
+  member_yes: "是"
+  member_no: "否"
+  member_ungrouped: "&7[ 未分队 ] &f{0}"
+  team_header: "&6[ {0} ]"
+  team_tooltip: "&7队伍ID: &f{0}\n&7人数上限: &f{1}"
+  team_empty_slot: "&8[ 空位 ]"
   map_game_button: "&d[ {0} ]"
   map_button: "&f[ {0} ] &7{1}"
-
-parkour:
-  joined: "已加入跑酷房间: {0}"
-  left: "已离开跑酷房间。"
-  started: "跑酷开始: {0}"
-  ended: "跑酷结束: {0}"
-  checkpoint_saved: "已保存检查点。"
-  checkpoint_returned: "已返回检查点。"
-  no_checkpoint: "当前没有检查点。"
-  finished: "完成跑酷，用时 {0}s，获得 {1} 点。"
-  item_name: "检查点"
-  item_lore: "右键返回检查点"
+  create_room_map_button: "&a[ {0} ]"

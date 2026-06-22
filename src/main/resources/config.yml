@@ -1,5 +1,47 @@
 language: zh_CN
 
+database:
+  enabled: true
+  type: sqlite
+  sqlite:
+    file: data/kagamecenter.db
+  mysql:
+    host: 127.0.0.1
+    port: 3306
+    database: kagamecenter
+    username: root
+    password: ""
+  pool:
+    maximum-size: 5
+
+velocity:
+  enabled: false
+  server-id: game-1
+  snapshot-ttl-seconds: 15
+  heartbeat-interval-seconds: 5
+  room-list-poll-interval-seconds: 1
+  reservation-poll-interval-ms: 250
+  join-intent-ttl-seconds: 15
+  redis:
+    enabled: true
+    host: 127.0.0.1
+    port: 6379
+    password: ""
+    database: 0
+    ssl: false
+    key-prefix: kgv
+
+chat:
+  enabled: true
+  spy:
+    enabled: false
+
+worlds:
+  cleanup-stale-temporary-on-startup: true
+  restrict-to-template-border:
+    enabled: true
+    buffer-chunks: 0
+
 demo:
   world-name: kagamecenter_demo_flat
   create-flat-if-missing: true

@@ -2,12 +2,61 @@ plugin:
   enabled: "KaGameCenter enabled."
   disabled: "KaGameCenter disabled."
 
+world:
+  cleanup_stale_temporary: "Cleaned {0} stale temporary world(s)."
+
+startup:
+  status_enabled: "enabled"
+  status_disabled: "disabled"
+  status_enabled_detail: "enabled ({0})"
+  version: "§7Version: §f{0}"
+  minecraft: "§7Minecraft: §f{0}"
+  language: "§7Language: §f{0}"
+  database: "§7Database: §f{0}"
+  modules: "§7Modules: §f{0} §7[{1}]"
+  games: "§7Games: §f{0}"
+  kamenu: "§7KaMenu: §f{0}"
+  placeholderapi: "§7PlaceholderAPI: §f{0}"
+  packet: "§7Packet: §f{0}"
+  velocity: "§7Velocity Bridge: §f{0}"
+
 command:
   only_player_dialog: "Only players can open the dialog demo."
   only_player_join: "Only players can join rooms."
   only_player_leave: "Only players can leave rooms."
   only_player_enter: "Only players can enter the demo world."
-  usage: "Usage: /{0} <menu|games|rooms|maps|create|join|quickjoin|start|leave|close|stats>; maps: /{0} maps <game> <list|create|select|remove|setspawn|reload> [map]"
+  only_player_packet: "Only players can run packet tests."
+  only_player_icon: "Only players can run icon text tests."
+  usage: "Usage: /{0} help; admin usage: /{0} admin help"
+  help: |-
+    §6KaGameCenter Commands
+    §e/{0} help §7Show help
+    §e/{0} menu §7Open the game center menu
+    §e/{0} chest [menuId] §7Open a chest menu
+    §e/{0} games §7List game definitions
+    §e/{0} rooms §7List active rooms
+    §e/{0} create <gameId> [mapPath] [roomName] §7Create a room
+    §e/{0} join <roomId> §7Join a room
+    §e/{0} quickjoin [gameId] §7Quick join or create a room
+    §e/{0} leave §7Leave current room
+    §c/{0} admin help §7Show admin commands
+  admin_help: |-
+    §6KaGameCenter Admin Commands
+    §e/{0} admin manage §7Open the managed game config panel
+    §e/{0} admin create <gameId> §7Create a room
+    §e/{0} admin start <roomId> §7Start a room
+    §e/{0} admin close <roomId> §7Close a room
+    §e/{0} admin stats §7Show stats snapshot
+    §e/{0} admin maps [gameId] [list|create|select|remove|setspawn|reload] [mapId] §7Manage maps
+    §e/{0} admin packet blockself [material] [seconds] §7Test block disguise
+    §e/{0} admin packet mobself [entityType] [seconds] §7Test mob disguise
+    §e/{0} admin packet probe [message] §7Test packet probe
+    §e/{0} admin packet blockglow [seconds] §7Test block glow outline
+    §e/{0} admin packet playerglow [player] [seconds] §7Test player glow
+    §e/{0} admin packet drop [material] [seconds] [scale] §7Test scalable private item
+    §e/{0} admin packet beam [seconds] [color] §7Test private beacon beam
+    §e/{0} admin packet clear §7Clear packet test visuals
+    §e/{0} admin icon <all|chat|title|actionbar|bossbar|scoreboard|tab|clear> [text] §7Test text icon rendering
   room_not_found: "Room not found: {0}"
   game_not_found: "Game not found: {0}"
   room_full: "This room is full."
@@ -16,6 +65,45 @@ command:
   no_games: "No games registered."
   no_stats: "No stats recorded."
   no_permission: "You do not have permission to do that."
+
+packet:
+  unavailable: "PacketEvents is unavailable; packet tests cannot run."
+  sent_probe: "Sent packet probe: {0}"
+  sent_blockself: "Disguised you as block {0} for online players for {1}s."
+  sent_mobself: "Disguised you as mob {0} for online players for {1}s."
+  sent_blockglow: "Displayed a glowing block outline to you for {0}s."
+  sent_playerglow: "Displayed player {0} glowing to you for {1}s."
+  sent_drop: "Displayed private item {0} in front of you for {1}s, scale {2}."
+  sent_beam: "Displayed private beacon beam {0} in front of you for {1}s."
+  cleared: "Cleared your packet test visuals."
+
+spectator:
+  not_allowed: "This room does not allow spectators right now."
+  action_joined: "Spectating room {0}"
+  action_left: "Left spectator mode"
+  item_follow: "Follow Player"
+  item_menu: "Spectator Menu"
+  item_leave: "Leave Spectator"
+  following: "Following {0}"
+
+icon:
+  usage: "Usage: /{0} admin icon <all|chat|title|actionbar|bossbar|scoreboard|tab|clear> [text], example: /{0} admin icon all &item:[diamond] <head:Steve>"
+  sent: "Sent icon text test: {0}"
+  cleared: "Cleared icon text test displays."
+
+chat:
+  global_usage: "Usage: /{0} <message>"
+  room_usage: "Usage: /{0} <message>"
+  not_in_room: "You are not in a room."
+  global_format: "§7[Global] §f{0}: §r{1}"
+  room_format: "§8[§eRoom {0}§8] §7{1} §f{3}: §r{4}"
+  team_format: "§8[§bTeam {2}§8] §f{3}: §r{4}"
+  spy_format: "§8[§7Spy {0}§8] §7{1}"
+
+selection:
+  point_set: "§aSet {0}: §f{1} {2} {3} {4}"
+  ready: "§aSelection ready: §f{0} ({1},{2},{3}) -> ({4},{5},{6})"
+  not_ready: "§cUse a stone axe left/right click to select a region first."
 
 dialog:
   main_title: "KaGameCenter"
@@ -33,22 +121,64 @@ room:
   started: "Started room: {0}"
   closed: "Closed room: {0}"
   joined: "Joined room: {0}"
+  spectating: "Spectating room: {0}"
   left: "Left current room."
   quick_joined: "Quick joined room: {0}"
   running_actionbar: "Room {0} running: {1}s"
   status_empty: "No active rooms."
-  status_line: "{0}: game={1}, state={2}, players={3}, world={4}"
+  status_line: "{0}: name={1}, game={2}, map={3}, state={4}, players={5}, world={6}"
   room_not_joinable: "This room is not joinable."
   room_full: "This room is full."
+  already_in_room: "You are already in a room. Leave your current room first."
   join_failed: "Failed to join room: {0}"
+  spectate_failed: "Failed to spectate room: {0}"
   start_failed: "Failed to start room: {0}"
   close_failed: "Failed to close room: {0}"
+  create_failed: "Failed to create room: {0}"
+  owner_line: "Owner: {0}"
 
 stats:
   snapshot_line: "{0} {1}: plays={2}, wins={3}, losses={4}, kills={5}, deaths={6}, points={7}"
 
 game:
   definition_line: "{0}({1}): enabled={2}, players={3}-{4}, duration={5}s, maps={6}"
+  missing_required_plugins: "Game {0} is missing required plugins: {1}"
+  disabled: "Game {0} is disabled."
+
+state:
+  created: "Created"
+  preparing: "Preparing"
+  waiting: "Waiting"
+  countdown: "Countdown"
+  running: "Running"
+  ending: "Ending"
+  closed: "Closed"
+
+managed_game:
+  menu_title_create: "§6Create Game"
+  menu_title_list: "§6Managed Game List"
+  menu_line_1: "§7Main management panel"
+  menu_line_2: "§7Choose the module, shared template map, and generate a private game snapshot."
+  list_line: "§7There are currently §f{0} §7managed games."
+  none: "§7No managed game configs have been created yet."
+  input_module: "§bSelect game module"
+  input_map: "§bSelect shared template map"
+  input_name: "§bEnter game name"
+  default_name: "New Game"
+  button_create: "§aCreate Game"
+  button_browse: "§eBrowse Configs"
+  button_edit: "§bEdit"
+  tooltip_id: "§7ID: §f{0}"
+  tooltip_shared_map: "§7Shared template: §f{0}"
+  tooltip_runtime_map: "§7Runtime map: §f{0}"
+  tooltip_private_map: "§7Private snapshot: §f{0}"
+  private_ready: "ready"
+  private_missing: "missing"
+  create_invalid: "§cChoose the module and map, then enter the game name."
+  create_map_mismatch: "§cThe selected map does not belong to this game module."
+  create_failed: "§cFailed to create the managed game config."
+  created: "§aCreated game: §f{0} §7({1})"
+  private_snapshot_missing: "§cManaged game {0} is missing its private map snapshot: {1}"
 
 display:
   title_joined: "Joined {0}"
@@ -69,6 +199,22 @@ display:
   action_joined: "Joined room {0}"
   action_left: "Left room"
   action_status: "State {0} | {1}/{2}"
+  tab_header: "§6{0} §7| Room §f{1}\n§7State §f{2} §7| Players §f{3}/{4}"
+  tab_footer_solo: "§7Solo\n{0}"
+  tab_footer_teams: "{0}\n{1}"
+  tab_player: "{0}"
+  tab_team_player: "[{0}] {1}"
+  tab_ungrouped_player: "[Ungrouped] {0}"
+  tab_slot_team: "§6[{0}]"
+  tab_slot_player: "§f{0}"
+  tab_slot_empty: "§8[Empty]"
+  tab_empty_room: "§8[No players]"
+
+velocity:
+  room_server: "Server: {0}"
+  remote_join_requested: "Requested cross-server join for {0}:{1}. Please wait."
+  remote_join_not_ready: "Cross-server join is not wired on the Paper side yet. Use /kgv join {0} {1} on Velocity for now."
+  remote_spectate_not_ready: "Cross-server spectate is not wired on the Paper side yet. Transfer to {0} first, then spectate room {1}."
 
 map:
   no_games: "No game map folders found."
@@ -81,13 +227,19 @@ map:
 
 menu:
   main_title: "&6Game Center"
-  main_line_1: "&7Choose a game, browse rooms, or manage maps."
+  main_line_1: "&7Create a room or join an existing room."
   main_line_2: "&7Use Sneak+F in-game to open this menu quickly."
   games_title: "&6Game List"
   games_line: "&7Available games: &f{0}"
+  create_room_game_title: "&6Create Room - Select Configured Game"
+  create_room_game_line: "&7Games available for room creation: &f{0}"
+  create_room_map_title: "&6Create {0} Room - Select Map"
+  create_room_map_line: "&7Available maps: &f{0}"
+  create_room_no_maps: "&cGame {0} has no available maps; cannot create a room."
   rooms_title: "&6Room List"
   rooms_line: "&7Active rooms: &f{0}"
   room_title: "&6Room {0}"
+  member_title: "&6Player {0}"
   maps_title: "&6Map Management"
   maps_line: "&7Browsable game folders: &f{0}"
   maps_game_title: "&6Maps: {0}"
@@ -98,35 +250,50 @@ menu:
   create_map_title: "&6Create Map: {0}"
   create_map_line: "&7Enter a map ID to create plugins/KaGameCenter/maps/{0}/<mapId>."
   input_map_id: "&aMap ID"
+  input_room_name: "&aRoom Name"
+  default_room_name: "Come play together!"
   button_games: "&a[ Game List ]"
   button_rooms: "&b[ Room List ]"
+  button_create_room: "&a[ Create Room ]"
+  button_room_detail: "&e[ Room Detail ]"
+  button_join_room_list: "&b[ Join Room ]"
+  button_create_default_room: "&a[ Create Parkour Room ]"
   button_quickjoin: "&e[ Quick Join Parkour ]"
   button_maps: "&d[ Map Management ]"
   button_leave: "&c[ Leave Room ]"
   button_close: "&8[ Close ]"
   button_back: "&7[ Back ]"
+  button_refresh: "&b[ Refresh ]"
+  chest_not_found: "Chest menu not found: {0}"
   button_join_room: "&a[ Join Room ]"
+  button_join_short: "&a[ Join ]"
+  button_spectate_short: "&9[ Spectate ]"
   button_start_room: "&6[ Start Game ]"
   button_close_room: "&c[ Close Room ]"
+  button_transfer_owner: "&6[ Transfer Owner ]"
+  button_kick_player: "&c[ Kick Player ]"
   button_reload_maps: "&e[ Reload Maps ]"
   button_create_map: "&a[ Create Map ]"
   button_select_map: "&a[ Set Active Map ]"
   button_setspawn: "&b[ Set Spawn ]"
   game_button: "&a[ {0} ]"
+  game_tooltip_create: "&7Click to create a room for this game."
+  game_tooltip_select_map: "&7Click to select a map and create a room."
   game_tooltip_players: "&7Players: &f{0}-{1}"
   game_tooltip_duration: "&7Duration: &f{0}s"
-  room_button: "&b[ {0} ] &7{1}/{2}"
+  game_tooltip_required_plugins: "&7Required plugins: &f{0}"
+  game_tooltip_optional_plugins: "&7Optional plugins: &f{0}"
+  room_button: "&8[&e{0}&8] &f{1} &8[&a{2}&8][&d{3}&8] &8[&b{4}&7/&b{5}&8] &6{6}"
+  member_empty: "&8[ Empty Room ]"
+  member_button: "&f[ {0} ]"
+  member_tooltip: "&7UUID: &f{0}"
+  member_state_owner: "&7Owner: &f{0}"
+  member_yes: "yes"
+  member_no: "no"
+  member_ungrouped: "&7[ Ungrouped ] &f{0}"
+  team_header: "&6[ {0} ]"
+  team_tooltip: "&7Team ID: &f{0}\n&7Max players: &f{1}"
+  team_empty_slot: "&8[ Empty ]"
   map_game_button: "&d[ {0} ]"
   map_button: "&f[ {0} ] &7{1}"
-
-parkour:
-  joined: "Joined parkour room: {0}"
-  left: "Left parkour room."
-  started: "Parkour started: {0}"
-  ended: "Parkour ended: {0}"
-  checkpoint_saved: "Checkpoint saved."
-  checkpoint_returned: "Returned to checkpoint."
-  no_checkpoint: "No checkpoint set."
-  finished: "Parkour finished in {0}s, gained {1} points."
-  item_name: "Checkpoint"
-  item_lore: "Right click to return to checkpoint"
+  create_room_map_button: "&a[ {0} ]"

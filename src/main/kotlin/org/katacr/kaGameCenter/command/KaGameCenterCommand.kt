@@ -1,39 +1,72 @@
 package org.katacr.kaGameCenter.command
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.bossbar.BossBar
+import net.kyori.adventure.title.Title
+import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Bukkit
+import org.bukkit.Material
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
 import org.bukkit.command.CommandSender
 import org.bukkit.command.TabCompleter
+import org.bukkit.entity.EntityType
 import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
+import org.bukkit.scoreboard.Criteria
+import org.bukkit.scoreboard.DisplaySlot
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.game.GameMapManager
 import org.katacr.kaGameCenter.game.GameRoomManager
+import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
+import org.katacr.kaGameCenter.display.IconTextParser
+import org.katacr.kaGameCenter.menu.chest.ChestMenuService
+import org.katacr.kaGameCenter.packet.PacketDispatchService
+import java.time.Duration
+import java.util.UUID
 
 class KaGameCenterCommand(
     private val menuService: GameCenterMenuService,
+    private val chestMenuService: ChestMenuService,
     private val roomManager: GameRoomManager,
     private val mapManager: GameMapManager,
-    private val languageManager: LanguageManager
+    private val managedGameCatalog: ManagedGameCatalogService,
+    private val languageManager: LanguageManager,
+    private val packetService: PacketDispatchService,
+    private val moduleAdminCommands: Map<String, ModuleAdminCommand>
 ) : CommandExecutor, TabCompleter {
 
     private val subCommands = listOf(
+        "help",
         "menu",
+        "chest",
         "games",
         "rooms",
-        "maps",
         "create",
         "join",
         "quickjoin",
-        "start",
         "leave",
-        "close",
-        "stats"
+        "admin"
     )
+
+    private val adminSubCommands = listOf(
+        "help",
+        "maps",
+        "manage",
+        "create",
+        "start",
+        "close",
+            "stats",
+            "packet",
+            "icon"
+        )
+
+    private val iconBossBars = linkedMapOf<UUID, BossBar>()
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         when (args.firstOrNull()?.lowercase()) {
+            null, "help" -> showHelp(sender, label)
             "menu" -> {
                 if (!requireUser(sender)) return true
                 if (sender !is Player) {
@@ -41,6 +74,17 @@ class KaGameCenterCommand(
                     return true
                 }
                 menuService.openMainMenu(sender)
+            }
+            "chest" -> {
+                if (!requireUser(sender)) return true
+                if (sender !is Player) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_dialog")))
+                    return true
+                }
+                val menuId = args.getOrNull(1) ?: "main"
+                if (!chestMenuService.open(sender, menuId)) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("menu.chest_not_found", menuId)))
+                }
             }
             "games" -> {
                 if (!requireUser(sender)) return true
@@ -62,15 +106,27 @@ class KaGameCenterCommand(
                 if (!requireUser(sender)) return true
                 sender.sendMessage(Component.text(roomManager.status()))
             }
-            "maps" -> {
-                if (!requireAdmin(sender)) return true
-                handleMaps(sender, label, args)
-            }
             "create" -> {
-                if (!requireAdmin(sender)) return true
+                if (!requireUser(sender)) return true
+                if (sender !is Player) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_join")))
+                    return true
+                }
                 val gameId = args.getOrNull(1) ?: return usage(sender, label)
-                val room = roomManager.createRoom(gameId)
-                sender.sendMessage(Component.text(if (room == null) languageManager.getMessage("command.game_not_found", gameId) else languageManager.getMessage("room.created", room.id)))
+                val mapTemplate = args.getOrNull(2)
+                val roomName = args.drop(3).joinToString(" ").ifBlank { null }
+                val room = roomManager.createRoom(gameId, sender.uniqueId, mapTemplate, roomName)
+                if (room == null) {
+                    sender.sendMessage(Component.text(roomManager.createRoomFailureMessage(gameId)))
+                    return true
+                }
+                val joined = roomManager.joinRoom(sender, room.id)
+                if (!joined) {
+                    roomManager.closeRoom(room.id)
+                    sender.sendMessage(Component.text(languageManager.getMessage("room.join_failed", room.id)))
+                    return true
+                }
+                sender.sendMessage(Component.text(languageManager.getMessage("room.created", room.id)))
             }
             "join" -> {
                 if (!requireUser(sender)) return true
@@ -90,13 +146,7 @@ class KaGameCenterCommand(
                 }
                 val gameId = args.getOrNull(1) ?: "parkour"
                 val room = roomManager.joinNewRoom(sender, gameId)
-                sender.sendMessage(Component.text(if (room == null) languageManager.getMessage("command.game_not_found", gameId) else languageManager.getMessage("room.quick_joined", room.id)))
-            }
-            "start" -> {
-                if (!requireAdmin(sender)) return true
-                val roomId = args.getOrNull(1) ?: return usage(sender, label)
-                val started = roomManager.startRoom(roomId)
-                sender.sendMessage(Component.text(if (started) languageManager.getMessage("room.started", roomId) else languageManager.getMessage("room.start_failed", roomId)))
+                sender.sendMessage(Component.text(if (room == null) roomManager.createRoomFailureMessage(gameId) else languageManager.getMessage("room.quick_joined", room.id)))
             }
             "leave" -> {
                 if (!requireUser(sender)) return true
@@ -107,18 +157,9 @@ class KaGameCenterCommand(
                 val left = roomManager.leaveCurrentRoom(sender)
                 sender.sendMessage(Component.text(if (left) languageManager.getMessage("room.left") else languageManager.getMessage("command.no_room")))
             }
-            "close" -> {
+            "admin" -> {
                 if (!requireAdmin(sender)) return true
-                val roomId = args.getOrNull(1) ?: return usage(sender, label)
-                val closed = roomManager.closeRoom(roomId)
-                sender.sendMessage(Component.text(if (closed) languageManager.getMessage("room.closed", roomId) else languageManager.getMessage("command.room_not_found", roomId)))
-            }
-            "stats" -> {
-                if (!requireAdmin(sender)) return true
-                val lines = roomManager.statsSnapshot().joinToString("\n") {
-                    languageManager.getMessage("stats.snapshot_line", it.playerId, it.gameId, it.plays, it.wins, it.losses, it.kills, it.deaths, it.points)
-                }
-                sender.sendMessage(Component.text(if (lines.isBlank()) languageManager.getMessage("command.no_stats") else lines))
+                handleAdmin(sender, label, args)
             }
             else -> usage(sender, label)
         }
@@ -133,13 +174,229 @@ class KaGameCenterCommand(
     ): List<String> {
         if (args.size == 1) {
             val prefix = args[0].lowercase()
-            return subCommands.filter { it.startsWith(prefix) }
+            return subCommands
+                .filter { it != "admin" || sender.hasPermission("kagamecenter.admin") }
+                .filter { it.startsWith(prefix) }
         }
 
-        if (args.firstOrNull()?.equals("maps", ignoreCase = true) == true) {
-            return completeMaps(args)
+        if (args.firstOrNull()?.equals("admin", ignoreCase = true) == true) {
+            if (!sender.hasPermission("kagamecenter.admin")) return emptyList()
+            return completeAdmin(sender, args)
         }
-        return emptyList()
+        return completeUser(args)
+    }
+
+    private fun handleAdmin(sender: CommandSender, label: String, args: Array<out String>) {
+        when (args.getOrNull(1)?.lowercase()) {
+            null, "help" -> showAdminHelp(sender, label)
+            "maps" -> handleMaps(sender, label, shiftedArgs(args))
+            "manage" -> {
+                val player = sender as? Player
+                if (player == null) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_dialog")))
+                    return
+                }
+                menuService.openAdminManageMenu(player)
+            }
+            "create" -> {
+                val gameId = args.getOrNull(2) ?: return showUsage(sender, label)
+                val room = roomManager.createRoom(gameId)
+                sender.sendMessage(Component.text(if (room == null) roomManager.createRoomFailureMessage(gameId) else languageManager.getMessage("room.created", room.id)))
+            }
+            "start" -> {
+                val roomId = args.getOrNull(2) ?: return showUsage(sender, label)
+                val started = roomManager.startRoom(roomId)
+                sender.sendMessage(Component.text(if (started) languageManager.getMessage("room.started", roomId) else languageManager.getMessage("room.start_failed", roomId)))
+            }
+            "close" -> {
+                val roomId = args.getOrNull(2) ?: return showUsage(sender, label)
+                val closed = roomManager.closeRoom(roomId)
+                sender.sendMessage(Component.text(if (closed) languageManager.getMessage("room.closed", roomId) else languageManager.getMessage("command.room_not_found", roomId)))
+            }
+            "stats" -> {
+                val lines = roomManager.statsSnapshot().joinToString("\n") {
+                    languageManager.getMessage("stats.snapshot_line", it.playerId, it.gameId, it.plays, it.wins, it.losses, it.kills, it.deaths, it.points)
+                }
+                sender.sendMessage(Component.text(if (lines.isBlank()) languageManager.getMessage("command.no_stats") else lines))
+            }
+            "packet" -> handlePacket(sender, label, shiftedArgs(args))
+            "icon" -> handleIcon(sender, label, shiftedArgs(args))
+            else -> {
+                val moduleCommand = moduleAdminCommands[args.getOrNull(1)?.lowercase()]
+                if (moduleCommand == null) {
+                    showUsage(sender, label)
+                } else {
+                    moduleCommand.execute(sender, label, args.drop(2).toTypedArray())
+                }
+            }
+        }
+    }
+
+    private fun handleIcon(sender: CommandSender, label: String, args: Array<out String>) {
+        val player = sender as? Player
+        if (player == null) {
+            sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_icon")))
+            return
+        }
+
+        val action = args.getOrNull(1)?.lowercase()
+        val text = args.drop(2).joinToString(" ").ifBlank { defaultIconTestText(player) }
+        val component = IconTextParser.parse(text)
+
+        when (action) {
+            "chat" -> player.sendMessage(component)
+            "title" -> player.showTitle(Title.title(
+                component,
+                IconTextParser.parse("&7KaGameCenter icon subtitle"),
+                Title.Times.times(Duration.ofMillis(250), Duration.ofSeconds(3), Duration.ofMillis(500))
+            ))
+            "actionbar" -> player.sendActionBar(component)
+            "bossbar" -> {
+                clearIconBossBar(player)
+                val bossBar = BossBar.bossBar(component, 1.0f, BossBar.Color.BLUE, BossBar.Overlay.PROGRESS)
+                iconBossBars[player.uniqueId] = bossBar
+                player.showBossBar(bossBar)
+            }
+            "scoreboard" -> showIconScoreboard(player, component)
+            "tab" -> {
+                player.playerListName(component)
+                player.sendPlayerListHeaderAndFooter(component, IconTextParser.parse("&7footer &item:[ender_pearl] <head:${player.name}>"))
+            }
+            "all" -> {
+                player.sendMessage(component)
+                player.sendActionBar(component)
+                player.showTitle(Title.title(
+                    component,
+                    IconTextParser.parse("&7Title subtitle &item:[paper]"),
+                    Title.Times.times(Duration.ofMillis(250), Duration.ofSeconds(3), Duration.ofMillis(500))
+                ))
+                clearIconBossBar(player)
+                val bossBar = BossBar.bossBar(component, 1.0f, BossBar.Color.BLUE, BossBar.Overlay.PROGRESS)
+                iconBossBars[player.uniqueId] = bossBar
+                player.showBossBar(bossBar)
+                showIconScoreboard(player, component)
+                player.playerListName(component)
+                player.sendPlayerListHeaderAndFooter(component, IconTextParser.parse("&7footer &item:[ender_pearl] <head:${player.name}>"))
+            }
+            "clear" -> {
+                clearIconBossBar(player)
+                player.scoreboard = Bukkit.getScoreboardManager().mainScoreboard
+                player.playerListName(Component.text(player.name))
+                player.sendPlayerListHeaderAndFooter(Component.empty(), Component.empty())
+                player.resetTitle()
+                player.sendActionBar(Component.empty())
+                player.sendMessage(Component.text(languageManager.getMessage("icon.cleared")))
+                return
+            }
+            else -> {
+                sender.sendMessage(Component.text(languageManager.getMessage("icon.usage", label)))
+                return
+            }
+        }
+
+        player.sendMessage(Component.text(languageManager.getMessage("icon.sent", action ?: "")))
+    }
+
+    private fun showIconScoreboard(player: Player, component: Component) {
+        val scoreboard = Bukkit.getScoreboardManager().newScoreboard
+        val objective = scoreboard.registerNewObjective("kgc_icon", Criteria.DUMMY, component)
+        objective.displaySlot = DisplaySlot.SIDEBAR
+
+        listOf(
+            IconTextParser.parse("&a标题和行测试"),
+            component,
+            IconTextParser.parse("&item:[diamond] &f物品图标"),
+            IconTextParser.parse("<head:${player.name}> &f玩家头像")
+        ).forEachIndexed { index, line ->
+            val entry = "§${index.toString(16)}"
+            val team = scoreboard.registerNewTeam("kgc_icon_$index")
+            team.addEntry(entry)
+            team.prefix(line)
+            objective.getScore(entry).score = 4 - index
+        }
+
+        player.scoreboard = scoreboard
+    }
+
+    private fun clearIconBossBar(player: Player) {
+        iconBossBars.remove(player.uniqueId)?.let(player::hideBossBar)
+    }
+
+    private fun defaultIconTestText(player: Player): String {
+        return "&a&item:[diamond] icon-test <head:${player.name}> &f${player.name}"
+    }
+
+    private fun handlePacket(sender: CommandSender, label: String, args: Array<out String>) {
+        val player = sender as? Player
+        if (player == null) {
+            sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_packet")))
+            return
+        }
+
+        if (!packetService.available) {
+            sender.sendMessage(Component.text(languageManager.getMessage("packet.unavailable")))
+            return
+        }
+
+        when (args.getOrNull(1)?.lowercase()) {
+            "probe" -> {
+                val message = args.drop(2).joinToString(" ").ifBlank { "KaGameCenter PacketEvents probe" }
+                packetService.showProbe(player, message)
+                player.sendMessage(Component.text(languageManager.getMessage("packet.sent_probe", message)))
+            }
+            "blockself" -> {
+                val material = parseMaterial(args.getOrNull(2)) ?: Material.DIAMOND_BLOCK
+                val seconds = parseSeconds(args.getOrNull(3))
+                packetService.disguisePlayerAsBlock(player, material, Bukkit.getOnlinePlayers(), seconds)
+                player.sendMessage(Component.text(languageManager.getMessage("packet.sent_blockself", material.name, seconds)))
+            }
+            "mobself" -> {
+                val entityType = parseEntityType(args.getOrNull(2)) ?: EntityType.PIG
+                val seconds = parseSeconds(args.getOrNull(3))
+                packetService.disguisePlayerAsMob(player, entityType, Bukkit.getOnlinePlayers(), seconds)
+                player.sendMessage(Component.text(languageManager.getMessage("packet.sent_mobself", entityType.name, seconds)))
+            }
+            "blockglow" -> {
+                val seconds = parseSeconds(args.getOrNull(2))
+                packetService.showBlockGlow(player, player.getTargetBlockExact(12)?.location ?: player.location.block.location, seconds)
+                player.sendMessage(Component.text(languageManager.getMessage("packet.sent_blockglow", seconds)))
+            }
+            "playerglow" -> {
+                val targetName = args.getOrNull(2)
+                val target = targetName?.let(Bukkit::getPlayerExact) ?: player
+                val seconds = parseSeconds(args.getOrNull(3))
+                packetService.showPlayerGlow(player, target, seconds)
+                player.sendMessage(Component.text(languageManager.getMessage("packet.sent_playerglow", target.name, seconds)))
+            }
+            "drop" -> {
+                val material = parseMaterial(args.getOrNull(2)) ?: Material.DIAMOND
+                val seconds = parseSeconds(args.getOrNull(3))
+                val scale = parseScale(args.getOrNull(4))
+                packetService.showPrivatePickup(
+                    player,
+                    player.location.add(player.location.direction.normalize().multiply(2)),
+                    ItemStack(material),
+                    glowing = true,
+                    color = NamedTextColor.AQUA,
+                    durationSeconds = seconds,
+                    scale = scale
+                ) { picker ->
+                    picker.inventory.addItem(ItemStack(material))
+                }
+                player.sendMessage(Component.text(languageManager.getMessage("packet.sent_drop", material.name, seconds, scale)))
+            }
+            "beam" -> {
+                val seconds = parseSeconds(args.getOrNull(2))
+                val color = parseNamedTextColor(args.getOrNull(3)) ?: NamedTextColor.AQUA
+                packetService.showBeaconBeam(player, player.location.add(player.location.direction.normalize().multiply(2)), color, seconds)
+                player.sendMessage(Component.text(languageManager.getMessage("packet.sent_beam", color.toString(), seconds)))
+            }
+            "clear" -> {
+                packetService.clearViewer(player)
+                player.sendMessage(Component.text(languageManager.getMessage("packet.cleared")))
+            }
+            else -> usage(sender, label)
+        }
     }
 
     private fun handleMaps(sender: CommandSender, label: String, args: Array<out String>) {
@@ -228,6 +485,158 @@ class KaGameCenterCommand(
             }
             else -> emptyList()
         }
+    }
+
+    private fun completeUser(args: Array<out String>): List<String> {
+        return when (args.size) {
+            2 -> {
+                val prefix = args[1].lowercase()
+                when (args[0].lowercase()) {
+                    "join" -> roomManager.listRooms().map { it.id }.filter { it.startsWith(prefix) }
+                    "chest" -> listOf("main").filter { it.startsWith(prefix) }
+                    "create" -> completeCreate(args)
+                    "quickjoin" -> (roomManager.listDefinitions().map { it.id } + managedGameCatalog.all().map { it.globalId }).filter { it.startsWith(prefix) }
+                    else -> emptyList()
+                }
+            }
+            3 -> {
+                when (args[0].lowercase()) {
+                    "create" -> completeCreate(args)
+                    else -> emptyList()
+                }
+            }
+            else -> emptyList()
+        }
+    }
+
+    private fun completeCreate(args: Array<out String>): List<String> {
+        val prefix = args.lastOrNull()?.lowercase().orEmpty()
+        return when (args.size) {
+            2 -> (roomManager.listDefinitions().map { it.id } + managedGameCatalog.all().map { it.globalId }).filter { it.startsWith(prefix) }
+            3 -> mapManager.listMaps(args[1]).map { it.relativePath }.filter { it.startsWith(prefix) }
+            else -> emptyList()
+        }
+    }
+
+    private fun completeAdmin(sender: CommandSender, args: Array<out String>): List<String> {
+        return when (args.size) {
+            2 -> {
+                val prefix = args[1].lowercase()
+                (adminSubCommands + moduleAdminCommands.keys)
+                    .distinct()
+                    .filter { it.startsWith(prefix) }
+            }
+            else -> {
+                val adminArgs = shiftedArgs(args)
+                when (args.getOrNull(1)?.lowercase()) {
+                    "maps" -> completeMaps(adminArgs)
+                    "packet" -> completePacket(adminArgs)
+                    "icon" -> completeIcon(adminArgs)
+                    in moduleAdminCommands.keys -> moduleAdminCommands[args[1].lowercase()]?.tabComplete(sender, args.drop(2).toTypedArray()).orEmpty()
+                    "create" -> {
+                        if (args.size != 3) return emptyList()
+                        val prefix = args[2].lowercase()
+                        (roomManager.listDefinitions().map { it.id } + managedGameCatalog.all().map { it.globalId })
+                            .distinct()
+                            .filter { it.startsWith(prefix) }
+                    }
+                    "start", "close" -> {
+                        if (args.size != 3) return emptyList()
+                        val prefix = args[2].lowercase()
+                        roomManager.listRooms().map { it.id }.filter { it.startsWith(prefix) }
+                    }
+                    else -> emptyList()
+                }
+            }
+        }
+    }
+
+    private fun completeIcon(args: Array<out String>): List<String> {
+        return when (args.size) {
+            2 -> {
+                val prefix = args[1].lowercase()
+                listOf("all", "chat", "title", "actionbar", "bossbar", "scoreboard", "tab", "clear")
+                    .filter { it.startsWith(prefix) }
+            }
+            3 -> listOf("&item:[diamond]", "&item:[stone]", "<head:")
+                .filter { it.lowercase().startsWith(args[2].lowercase()) }
+            else -> emptyList()
+        }
+    }
+
+    private fun completePacket(args: Array<out String>): List<String> {
+        return when (args.size) {
+            2 -> {
+                val prefix = args[1].lowercase()
+                listOf("probe", "blockself", "mobself", "blockglow", "playerglow", "drop", "beam", "clear").filter { it.startsWith(prefix) }
+            }
+            3 -> {
+                val action = args[1].lowercase()
+                val prefix = args[2].uppercase()
+                when (action) {
+                    "blockself", "drop" -> Material.entries
+                        .asSequence()
+                        .filter { it.isItem || it.isBlock }
+                        .map { it.name }
+                        .filter { it.startsWith(prefix) }
+                        .take(30)
+                        .toList()
+                    "mobself" -> EntityType.entries
+                        .asSequence()
+                        .map { it.name }
+                        .filter { it.startsWith(prefix) }
+                        .take(30)
+                        .toList()
+                    "playerglow" -> Bukkit.getOnlinePlayers()
+                        .map { it.name }
+                        .filter { it.lowercase().startsWith(args[2].lowercase()) }
+                    "beam" -> listOf("aqua", "yellow", "green", "red", "blue", "light_purple", "white")
+                        .filter { it.startsWith(args[2].lowercase()) }
+                    else -> emptyList()
+                }
+            }
+            else -> emptyList()
+        }
+    }
+
+    private fun parseMaterial(value: String?): Material? {
+        return value?.uppercase()?.let { runCatching { Material.valueOf(it) }.getOrNull() }
+    }
+
+    private fun parseEntityType(value: String?): EntityType? {
+        return value?.uppercase()?.let { runCatching { EntityType.valueOf(it) }.getOrNull() }
+    }
+
+    private fun parseSeconds(value: String?): Int {
+        return value?.toIntOrNull()?.coerceIn(1, 120) ?: 15
+    }
+
+    private fun parseScale(value: String?): Float {
+        return value?.toFloatOrNull()?.coerceIn(0.25f, 8.0f) ?: 1.8f
+    }
+
+    private fun parseNamedTextColor(value: String?): NamedTextColor? {
+        if (value == null) return null
+        return NamedTextColor.NAMES.value(value.lowercase())
+    }
+
+    private fun shiftedArgs(args: Array<out String>): Array<String> {
+        if (args.size <= 1) return emptyArray()
+        return args.drop(1).toTypedArray()
+    }
+
+    private fun showHelp(sender: CommandSender, label: String): Boolean {
+        sender.sendMessage(Component.text(languageManager.getMessage("command.help", label)))
+        return true
+    }
+
+    private fun showAdminHelp(sender: CommandSender, label: String): Boolean {
+        sender.sendMessage(Component.text(languageManager.getMessage("command.admin_help", label)))
+        return true
+    }
+
+    private fun showUsage(sender: CommandSender, label: String) {
+        usage(sender, label)
     }
 
     private fun usage(sender: CommandSender, label: String): Boolean {

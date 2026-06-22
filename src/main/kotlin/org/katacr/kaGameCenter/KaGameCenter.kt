@@ -2,20 +2,48 @@ package org.katacr.kaGameCenter
 
 import net.byteflux.libby.BukkitLibraryManager
 import net.byteflux.libby.Library
+import org.katacr.kaGameCenter.api.GameCenterApi
+import org.katacr.kaGameCenter.broadcast.RoomBroadcastService
+import org.katacr.kaGameCenter.chat.GameChatListener
+import org.katacr.kaGameCenter.chat.GameChatService
+import org.katacr.kaGameCenter.chat.GlobalChatCommand
+import org.katacr.kaGameCenter.chat.RoomChatCommand
 import org.katacr.kaGameCenter.data.PlayerSnapshotService
 import org.katacr.kaGameCenter.command.KaGameCenterCommand
+import org.katacr.kaGameCenter.command.ModuleAdminCommand
+import org.katacr.kaGameCenter.data.DatabaseConfig
+import org.katacr.kaGameCenter.data.MemoryStatsRepository
 import org.katacr.kaGameCenter.data.PlayerStatsService
+import org.katacr.kaGameCenter.data.SqlStatsRepository
 import org.katacr.kaGameCenter.dialog.GameCenterDialogService
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
 import org.katacr.kaGameCenter.display.GameDisplayService
+import org.katacr.kaGameCenter.editor.MapEditorService
+import org.katacr.kaGameCenter.entity.RoomEntityOwnershipService
+import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.GameRegistry
 import org.katacr.kaGameCenter.game.GameManager
 import org.katacr.kaGameCenter.game.GameMapManager
 import org.katacr.kaGameCenter.game.GameRoomManager
-import org.katacr.kaGameCenter.game.parkour.ParkourGameModule
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.listener.GamePlayerListener
-import org.katacr.kaGameCenter.listener.ParkourListener
+import org.katacr.kaGameCenter.menu.chest.ChestMenuListener
+import org.katacr.kaGameCenter.menu.chest.ChestMenuService
+import org.katacr.kaGameCenter.module.ManagedGameModuleService
+import org.katacr.kaGameCenter.packet.PacketDispatchService
+import org.katacr.kaGameCenter.packet.PacketEventsDispatchService
+import org.katacr.kaGameCenter.result.GameResultService
+import org.katacr.kaGameCenter.runtime.PlayerRuntimeStateService
+import org.katacr.kaGameCenter.selection.SelectionListener
+import org.katacr.kaGameCenter.selection.SelectionService
+import org.katacr.kaGameCenter.spectator.SpectatorService
+import org.katacr.kaGameCenter.team.GameTeamService
+import org.katacr.kaGameCenter.team.TeamAssignmentService
+import org.katacr.kaGameCenter.task.RoomTaskService
+import org.katacr.kaGameCenter.velocity.NoopVelocityBridgeService
+import org.katacr.kaGameCenter.velocity.RedisVelocityBridgeService
+import org.katacr.kaGameCenter.velocity.VelocityBridgeConfig
+import org.katacr.kaGameCenter.velocity.VelocityBridgeService
 import org.katacr.kaGameCenter.world.TemporaryWorldService
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
@@ -33,6 +61,32 @@ class KaGameCenter : JavaPlugin() {
     private lateinit var languageManager: LanguageManager
     private lateinit var displayService: GameDisplayService
     private lateinit var menuService: GameCenterMenuService
+    private lateinit var chestMenuService: ChestMenuService
+    private lateinit var teamService: GameTeamService
+    private lateinit var spectatorService: SpectatorService
+    private lateinit var packetService: PacketDispatchService
+    private lateinit var selectionService: SelectionService
+    private lateinit var mapEditorService: MapEditorService
+    private lateinit var managedGameCatalog: ManagedGameCatalogService
+    private lateinit var gameCenterApi: GameCenterApi
+    private lateinit var moduleService: ManagedGameModuleService
+    private lateinit var velocityBridgeService: VelocityBridgeService
+    private lateinit var chatService: GameChatService
+    private lateinit var roomTaskService: RoomTaskService
+    private lateinit var entityOwnershipService: RoomEntityOwnershipService
+    private lateinit var teamAssignmentService: TeamAssignmentService
+    private lateinit var resultService: GameResultService
+    private lateinit var playerRuntimeStateService: PlayerRuntimeStateService
+    private lateinit var roomBroadcastService: RoomBroadcastService
+    private val moduleAdminCommands = linkedMapOf<String, ModuleAdminCommand>()
+
+    companion object {
+        private var instanceApi: GameCenterApi? = null
+
+        fun api(): GameCenterApi {
+            return instanceApi ?: throw IllegalStateException("KaGameCenter API is not ready")
+        }
+    }
 
     override fun onLoad() {
         val librariesDir = File(dataFolder.parentFile.parentFile, "libraries")
@@ -68,11 +122,25 @@ class KaGameCenter : JavaPlugin() {
             .version("5.1.0")
             .build()
 
+        val gson = Library.builder()
+            .groupId("com{}google{}code{}gson")
+            .artifactId("gson")
+            .version("2.10.1")
+            .build()
+
+        val lettuce = Library.builder()
+            .groupId("io{}lettuce")
+            .artifactId("lettuce-core")
+            .version("6.3.2.RELEASE")
+            .build()
+
         logger.info("Checking KaGameCenter runtime libraries...")
         libraryManager.loadLibrary(kotlinStd)
         libraryManager.loadLibrary(sqlite)
         libraryManager.loadLibrary(mysql)
         libraryManager.loadLibrary(hikari)
+        libraryManager.loadLibrary(gson)
+        libraryManager.loadLibrary(lettuce)
     }
 
     override fun onEnable() {
@@ -82,28 +150,61 @@ class KaGameCenter : JavaPlugin() {
         languageManager.init()
 
         dialogService = GameCenterDialogService(languageManager)
-        displayService = GameDisplayService(this, languageManager)
+        teamService = GameTeamService()
+        teamAssignmentService = TeamAssignmentService(teamService)
+        packetService = PacketEventsDispatchService(this)
+        packetService.init()
+        selectionService = SelectionService()
+        spectatorService = SpectatorService(this, languageManager)
+        displayService = GameDisplayService(this, languageManager, teamService)
         gameManager = GameManager(this)
         gameMapManager = GameMapManager(this, gameManager)
         registry = GameRegistry(gameManager)
         temporaryWorldService = TemporaryWorldService(this)
-        statsService = PlayerStatsService()
+        val cleanedTemporaryWorlds = temporaryWorldService.cleanupStaleTemporaryWorlds()
+        if (cleanedTemporaryWorlds > 0) {
+            logger.info(languageManager.getMessage("world.cleanup_stale_temporary", cleanedTemporaryWorlds))
+        }
+        managedGameCatalog = ManagedGameCatalogService(this, registry, temporaryWorldService)
+        mapEditorService = MapEditorService(temporaryWorldService)
+        roomTaskService = RoomTaskService(this)
+        entityOwnershipService = RoomEntityOwnershipService()
+        playerRuntimeStateService = PlayerRuntimeStateService()
+        roomBroadcastService = RoomBroadcastService()
+        statsService = createStatsService()
+        resultService = GameResultService(statsService)
         snapshotService = PlayerSnapshotService()
-        roomManager = GameRoomManager(this, registry, gameManager, temporaryWorldService, statsService, snapshotService, displayService, languageManager)
-        menuService = GameCenterMenuService(this, dialogService, roomManager, gameMapManager, languageManager)
+        velocityBridgeService = createVelocityBridgeService()
+        roomManager = GameRoomManager(this, registry, gameManager, managedGameCatalog, temporaryWorldService, statsService, snapshotService, displayService, spectatorService, languageManager, teamService, velocityBridgeService)
+        chatService = GameChatService(this, roomManager, teamService, languageManager)
+        menuService = GameCenterMenuService(this, dialogService, roomManager, gameMapManager, teamService, languageManager, managedGameCatalog, velocityBridgeService)
+        chestMenuService = ChestMenuService(this, menuService)
+        menuService.bindChestMenuService(chestMenuService)
+        gameCenterApi = GameCenterApi(registry, roomManager, temporaryWorldService, languageManager, packetService, selectionService, teamService, teamAssignmentService, chatService, mapEditorService, managedGameCatalog, menuService, chestMenuService, roomTaskService, entityOwnershipService, resultService, playerRuntimeStateService, roomBroadcastService)
+        moduleService = ManagedGameModuleService(this, gameCenterApi, roomManager, temporaryWorldService, languageManager, packetService, selectionService, mapEditorService, managedGameCatalog, menuService, moduleAdminCommands)
 
-        registry.register(ParkourGameModule(temporaryWorldService, languageManager))
         gameManager.load()
+        moduleService.load()
+        managedGameCatalog.load()
+        velocityBridgeService.init()
+        velocityBridgeService.startReservationHandling(roomManager::reserveRoomForProxy)
+        instanceApi = gameCenterApi
         roomManager.start()
         menuService.init()
+        chestMenuService.init()
 
-        server.pluginManager.registerEvents(GamePlayerListener(roomManager, menuService), this)
-        server.pluginManager.registerEvents(ParkourListener(roomManager), this)
+        server.pluginManager.registerEvents(GamePlayerListener(roomManager, menuService, packetService, spectatorService, velocityBridgeService), this)
+        server.pluginManager.registerEvents(SelectionListener(selectionService, languageManager), this)
+        server.pluginManager.registerEvents(GameChatListener(this, chatService), this)
+        server.pluginManager.registerEvents(ChestMenuListener(chestMenuService), this)
 
-        val command = KaGameCenterCommand(menuService, roomManager, gameMapManager, languageManager)
+        val command = KaGameCenterCommand(menuService, chestMenuService, roomManager, gameMapManager, managedGameCatalog, languageManager, packetService, moduleAdminCommands)
         getCommand("kagamecenter")?.setExecutor(command)
         getCommand("kagamecenter")?.tabCompleter = command
+        getCommand("globalchat")?.setExecutor(GlobalChatCommand(chatService, languageManager))
+        getCommand("allchat")?.setExecutor(RoomChatCommand(chatService, languageManager))
 
+        printStartupInfo()
         logger.info(languageManager.getMessage("plugin.enabled"))
     }
 
@@ -111,14 +212,115 @@ class KaGameCenter : JavaPlugin() {
         if (::menuService.isInitialized) {
             menuService.shutdown()
         }
+        if (::chestMenuService.isInitialized) {
+            chestMenuService.shutdown()
+        }
         if (::roomManager.isInitialized) {
             roomManager.stop()
+        }
+        if (::moduleService.isInitialized) {
+            moduleService.unload()
+        }
+        if (::roomTaskService.isInitialized) {
+            roomTaskService.cancelAll()
+        }
+        if (::entityOwnershipService.isInitialized) {
+            entityOwnershipService.clearAll()
+        }
+        if (::playerRuntimeStateService.isInitialized) {
+            playerRuntimeStateService.clearAll()
+        }
+        if (::mapEditorService.isInitialized) {
+            mapEditorService.shutdown(save = true)
         }
         if (::displayService.isInitialized) {
             displayService.clearAll()
         }
+        if (::packetService.isInitialized) {
+            packetService.shutdown()
+        }
+        if (::velocityBridgeService.isInitialized) {
+            velocityBridgeService.shutdown()
+        }
+        if (::statsService.isInitialized) {
+            statsService.close()
+        }
         if (::languageManager.isInitialized) {
             logger.info(languageManager.getMessage("plugin.disabled"))
         }
+        instanceApi = null
+    }
+
+    private fun createStatsService(): PlayerStatsService {
+        val databaseConfig = DatabaseConfig.from(this, config)
+        if (!databaseConfig.enabled) {
+            logger.info("KaGameCenter stats database is disabled; using memory stats.")
+            return PlayerStatsService(MemoryStatsRepository())
+        }
+
+        return runCatching {
+            PlayerStatsService(SqlStatsRepository(this, databaseConfig)).also { it.init() }
+        }.getOrElse {
+            logger.warning("Failed to initialize stats database, using memory stats: ${it.message}")
+            PlayerStatsService(MemoryStatsRepository()).also { service -> service.init() }
+        }
+    }
+
+    private fun createVelocityBridgeService(): VelocityBridgeService {
+        val bridgeConfig = VelocityBridgeConfig.from(config)
+        if (!bridgeConfig.enabled) {
+            return NoopVelocityBridgeService()
+        }
+        return RedisVelocityBridgeService(this, bridgeConfig)
+    }
+
+    private fun printStartupInfo() {
+        val console = server.consoleSender
+        val version = description.version
+        val gameVersion = server.version.substringAfter("MC: ", server.version).removeSuffix(")")
+        val loadedModules = moduleService.loadedModuleIds().joinToString(", ").ifBlank { "-" }
+        val registeredGames = roomManager.listModules().joinToString(", ") { it.id }.ifBlank { "-" }
+        val enabled = languageManager.getMessage("startup.status_enabled")
+        val disabled = languageManager.getMessage("startup.status_disabled")
+        val packetStatus = if (packetService.available) {
+            languageManager.getMessage("startup.status_enabled_detail", packetService.backendName)
+        } else {
+            disabled
+        }
+        val kaMenuStatus = when {
+            menuService.isActionHandlerRegistered() -> languageManager.getMessage("startup.status_enabled_detail", "kgc handler")
+            menuService.isKaMenuAvailable() -> enabled
+            else -> disabled
+        }
+        val placeholderStatus = if (server.pluginManager.isPluginEnabled("PlaceholderAPI")) enabled else disabled
+        val velocityStatus = if (velocityBridgeService.enabled) {
+            languageManager.getMessage("startup.status_enabled_detail", velocityBridgeService.backendName)
+        } else {
+            disabled
+        }
+
+        val logo = """
+            §e________________________________________________________
+            §b
+            §b  _  __       §3 ____                         §b
+            §b | |/ / __ _  §3/ ___| __ _ _ __ ___   ___    §b
+            §b | ' / / _` | §3| |  _ / _` | '_ ` _ \ / _ \   §b
+            §b | . \| (_| | §3| |_| | (_| | | | | | |  __/   §b
+            §b |_|\_\\__,_| §3\____|\__,_|_| |_| |_|\___|   §b
+            §b
+            ${languageManager.getMessage("startup.version", version)}
+            ${languageManager.getMessage("startup.minecraft", gameVersion)}
+            ${languageManager.getMessage("startup.language", languageManager.getCurrentLanguage())}
+            ${languageManager.getMessage("startup.database", statsService.backendName)}
+            ${languageManager.getMessage("startup.modules", moduleService.loadedModuleCount(), loadedModules)}
+            ${languageManager.getMessage("startup.games", registeredGames)}
+            ${languageManager.getMessage("startup.kamenu", kaMenuStatus)}
+            ${languageManager.getMessage("startup.placeholderapi", placeholderStatus)}
+            ${languageManager.getMessage("startup.packet", packetStatus)}
+            ${languageManager.getMessage("startup.velocity", velocityStatus)}
+            §e________________________________________________________
+        """.trimIndent()
+
+        logo.split("\n").forEach { console.sendMessage(it) }
     }
 }

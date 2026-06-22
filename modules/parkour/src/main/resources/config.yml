@@ -1,0 +1,23 @@
+id: parkour
+name: "跑酷"
+enabled: true
+main: jar
+jar: "../parkour.jar"
+entrypoint: "org.katacr.kagamecenter.parkour.ParkourModuleProvider"
+description: "External managed Parkour module."
+
+game:
+  display-name: "跑酷"
+  min-players: 1
+  max-players: 16
+  start-countdown-seconds: 5
+  finish-countdown-seconds: 60
+  result-display-seconds: 15
+  close-delay-seconds: 10
+  fall-y: -32.0
+  checkpoint-glow-seconds: 3
+  checkpoint-glow-color: "yellow"
+
+spectator:
+  enabled: true
+  mode: "managed"

@@ -1,0 +1,30 @@
+Title: "{menu.member_title}"
+
+Settings:
+  can_escape: true
+  after_action: "NONE"
+
+Body:
+  intro:
+    type: "message"
+    width: 320
+    text:
+      - "{menu.member_tooltip}"
+      - "{menu.member_state_owner}"
+
+Bottom:
+  type: "multi"
+  columns: 2
+  buttons:
+    transfer_owner:
+      text: "{menu.button_transfer_owner}"
+      actions:
+        - "kgc:transfer-owner {room.id} {player.uuid}"
+    kick:
+      text: "{menu.button_kick_player}"
+      actions:
+        - "kgc:kick-player {room.id} {player.uuid}"
+  exit:
+    text: "{menu.button_back}"
+    actions:
+      - "kgc:open-room {room.id}"
