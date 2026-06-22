@@ -1,0 +1,41 @@
+Title: "{menu.create_room_map_title}"
+Settings:
+  can_escape: true
+  after_action: "NONE"
+
+Inputs:
+  room_name:
+    type: "input"
+    text: "{menu.input_room_name}"
+    default: "{menu.default_room_name}"
+    max_length: 16
+
+Body:
+  intro:
+    type: "message"
+    width: 320
+    text: "{menu.create_room_map_line}"
+
+Bottom:
+  type: "multi"
+  columns: 1
+  buttons:
+    maps:
+      TYPE: "map_list"
+      text: "{menu.create_room_map_button}"
+      actions:
+        - "kgc:create-room {map.game_id} {map.relative_path}"
+      tooltip:
+        - "&7路径: &f{map.relative_path}"
+        - "&7状态: &f{map.active_label}"
+      empty-text: "{menu.create_room_no_maps}"
+      empty-actions:
+        - "kgc:open-create-game"
+    refresh:
+      text: "{menu.button_refresh}"
+      actions:
+        - "kgc:open-create-map {game.id}"
+  exit:
+    text: "{menu.button_back}"
+    actions:
+      - "kgc:open-create-game"

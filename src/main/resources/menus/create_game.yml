@@ -1,0 +1,37 @@
+Title: "{menu.create_room_game_title}"
+Settings:
+  can_escape: true
+  after_action: "NONE"
+
+Body:
+  intro:
+    type: "message"
+    width: 320
+    text: "{menu.create_room_game_line}"
+
+Bottom:
+  type: "multi"
+  columns: 1
+  buttons:
+    games:
+      TYPE: "managed_game_list"
+      text: "&a[ {game.name} ]"
+      actions:
+        - "kgc:create-room-config {game.id}"
+      tooltip:
+        - "&7ID: &f{game.id}"
+        - "&7模块: &f{game.module_name} &8({game.module_id})"
+        - "&7地图: &f{game.map_template}"
+        - "&7私有快照: &f{game.has_private_map}"
+        - "&7人数: &f{game.min_players}-{game.max_players}"
+      empty-text: "{command.no_games}"
+      empty-actions:
+        - "kgc:open-main"
+    refresh:
+      text: "{menu.button_refresh}"
+      actions:
+        - "kgc:open-create-game"
+  exit:
+    text: "{menu.button_back}"
+    actions:
+      - "kgc:open-main"
