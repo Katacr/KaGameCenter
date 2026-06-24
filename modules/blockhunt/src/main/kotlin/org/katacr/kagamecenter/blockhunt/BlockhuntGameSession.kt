@@ -160,6 +160,7 @@ class BlockhuntGameSession(
                 state.disguise = chooseDisguise(player.location)
                 player.sendMessage(Component.text(language.getMessage("blockhunt.assigned_hider")))
                 player.sendMessage(Component.text(language.getMessage("blockhunt.disguise_changed", state.disguise.name.lowercase())))
+                refreshDisguise(player, state)
             }
         }
         countdownTicks = config.startCountdownSeconds * 20
@@ -606,11 +607,11 @@ class BlockhuntGameSession(
     }
 
     private fun refreshDisguise(player: Player, state: BlockhuntPlayerState) {
+        applyHiderEntityState(player)
         if (state.invisibleTicks > 0) return
         if (state.locked) return
-        player.isInvisible = true
-        player.isCollidable = false
         val viewers = disguiseViewers(player)
+        packetService.clearDisguise(player, viewers)
         packetService.disguisePlayerAsBlock(player, state.disguise, viewers, config.disguiseRefreshSeconds + 3)
     }
 
@@ -624,8 +625,7 @@ class BlockhuntGameSession(
         state.lockedOriginalBlockData = block.blockData.clone()
         block.setBlockData(state.disguise.createBlockData(), false)
         state.lockedHitbox = spawnLockedHitbox(anchor.location)
-        player.isInvisible = true
-        player.isCollidable = false
+        applyHiderEntityState(player)
         player.gameMode = GameMode.SPECTATOR
         player.allowFlight = true
         player.isFlying = true
@@ -641,12 +641,16 @@ class BlockhuntGameSession(
         player.allowFlight = false
         player.isFlying = false
         player.walkSpeed = 0.2f
-        player.isInvisible = true
-        player.isCollidable = false
+        applyHiderEntityState(player)
         if (state.invisibleTicks > 0) {
             player.addPotionEffect(PotionEffect(PotionEffectType.INVISIBILITY, state.invisibleTicks, 0, true, false, false))
             packetService.clearDisguise(player, disguiseViewers(player))
         }
+    }
+
+    private fun applyHiderEntityState(player: Player) {
+        player.isInvisible = true
+        player.isCollidable = false
     }
 
     private fun spawnLockedHitbox(location: Location): Interaction {
@@ -830,6 +834,13 @@ class BlockhuntGameSession(
         val key = if (hidersWin) "blockhunt.result_hiders_win" else "blockhunt.result_hunters_win"
         room.players.mapNotNull(Bukkit::getPlayer).forEach { player ->
             val state = states[player.uniqueId]
+            if (state != null) {
+                restorePlayerState(player, state)
+                state.locked = false
+                state.lockLocation = null
+            } else {
+                restorePlayerState(player, null)
+            }
             val winner = (hidersWin && state?.role == BlockhuntRole.HIDER && state.alive) || (!hidersWin && state?.role == BlockhuntRole.HUNTER)
             if (winner) resultService.recordWin(room, player.uniqueId, points = 3) else resultService.recordLoss(room, player.uniqueId)
             player.walkSpeed = 0.2f

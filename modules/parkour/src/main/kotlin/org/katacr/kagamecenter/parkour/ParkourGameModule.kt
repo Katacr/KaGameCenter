@@ -11,8 +11,10 @@ import org.katacr.kaGameCenter.result.GameResultService
 import org.katacr.kaGameCenter.spectator.SpectatorMode
 import org.katacr.kaGameCenter.spectator.SpectatorPolicy
 import org.katacr.kaGameCenter.world.TemporaryWorldService
+import org.bukkit.plugin.java.JavaPlugin
 
 class ParkourGameModule(
+    private val plugin: JavaPlugin,
     private val configService: ParkourConfigService,
     private val worldService: TemporaryWorldService,
     private val language: ModuleLanguage,
@@ -40,6 +42,6 @@ class ParkourGameModule(
     }
 
     override fun createSession(room: GameRoom): GameSession {
-        return ParkourGameSession(room, configService, worldService, language, packetService, roomManager, resultService)
+        return ParkourGameSession(plugin, room, configService, worldService, language, packetService, roomManager, resultService)
     }
 }

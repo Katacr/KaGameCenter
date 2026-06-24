@@ -19,10 +19,19 @@ data class ParkourConfig(
     val fallY: Double,
     val checkpointGlowSeconds: Int,
     val checkpointGlowColor: String,
+    val rewards: ParkourRewardConfig,
     val maps: Map<String, ParkourMapConfig>
 ) {
     fun firstMap(): ParkourMapConfig? = maps.values.firstOrNull()
 }
+
+data class ParkourRewardConfig(
+    val enabled: Boolean,
+    val basePoints: Int,
+    val minimumPoints: Int,
+    val timePenaltyPerSecond: Int,
+    val rankBonus: List<Int>
+)
 
 data class ParkourMapConfig(
     val id: String,

@@ -98,6 +98,11 @@ class ParkourManagedGameEditor(
                 player.sendMessage(Component.text(language.getMessage("parkour.editor_opened", world.name)))
             }
             "save-world" -> {
+                if (mapEditorService.currentSessionId(player) != game.globalId) {
+                    ensurePrivateSnapshot(game) || return fail(player, "parkour.editor_private_snapshot_failed")
+                    player.sendMessage(Component.text(language.getMessage("parkour.editor_save_no_session")))
+                    return true
+                }
                 val saved = mapEditorService.saveIfEditing(game.globalId)
                 if (!saved) return fail(player, "parkour.editor_save_failed")
                 player.sendMessage(Component.text(language.getMessage("parkour.editor_saved")))

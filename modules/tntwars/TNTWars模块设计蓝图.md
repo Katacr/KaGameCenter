@@ -1,6 +1,6 @@
 # TNT Wars 模块设计蓝图
 
-更新时间：2026-06-21
+更新时间：2026-06-22
 
 ## 模块定位
 
@@ -226,17 +226,17 @@ tntwars:
 
 | ID | 原道具 | 第一版建议 |
 | --- | --- | --- |
-| `tnt_minecart` | 连发 TNT 矿车 | 第二阶段实现 |
+| `tnt_minecart` | 连发 TNT 矿车 | 已实现 |
 | `tnt` | 普通 TNT | 第一版实现 |
 | `long_tnt` | 远距离 TNT | 第一版可作为普通 TNT 的高速度版本 |
-| `creeper` | 点燃苦力怕 | 第二阶段实现 |
+| `creeper` | 点燃苦力怕 | 已实现 |
 | `fireball` | 火球 | 第一版实现 |
-| `tnt_bow` | TNT 弓 | 第二阶段实现 |
+| `tnt_bow` | TNT 弓 | 已实现 |
 | `tnt_rain` | TNT 雨 | 第一版实现 |
-| `creeper_rain` | 苦力怕雨 | 第二阶段实现 |
-| `fireball_rain` | 火球雨 | 第二阶段实现 |
+| `creeper_rain` | 苦力怕雨 | 已实现 |
+| `fireball_rain` | 火球雨 | 已实现 |
 
-第一版道具池：
+当前道具池：
 
 ```yaml
 items:
@@ -248,19 +248,43 @@ items:
       fuse-ticks: 50
       velocity: 1.2
       power: 4.0
+    tnt_minecart:
+      weight: 3
+      fuse-ticks: 50
+      velocity: 1.4
+      power: 4.0
     long_tnt:
       weight: 2
       fuse-ticks: 50
       velocity: 2.0
       power: 4.0
+    creeper:
+      weight: 3
+      fuse-ticks: 60
+      velocity: 1.4
+      power: 3.0
     fireball:
       weight: 3
       velocity: 1.5
       power: 5
+    tnt_bow:
+      weight: 2
+      fuse-ticks: 80
+      power: 4.0
     tnt_rain:
       weight: 1
       duration-seconds: 10
       drops-per-second: 4
+    creeper_rain:
+      weight: 1
+      duration-seconds: 10
+      drops-per-second: 2
+      power: 3.0
+    fireball_rain:
+      weight: 1
+      duration-seconds: 10
+      drops-per-second: 2
+      power: 4.0
 ```
 
 实现方式：
@@ -362,18 +386,13 @@ Title：
 - 已完成：玩家可创建房间、加入房间、开始游戏。
 - 已完成：自动分两队。
 - 已完成：运行中定时发放随机爆炸道具。
-- 已完成：普通 TNT、远距离 TNT、火球、TNT 雨可用。
+- 已完成：TNT 矿车、普通 TNT、远距离 TNT、苦力怕、火球、TNT 弓、TNT 雨、苦力怕雨、火球雨可用。
 - 已完成：掉落淘汰和队伍全灭胜负判定可用。
 - 已完成：结算统计可用。
 - 已完成：观战和聊天可用。
 
 第二阶段再补：
 
-- TNT 矿车连发。
-- 点燃苦力怕。
-- TNT 弓。
-- 苦力怕雨。
-- 火球雨。
 - 多地图模板迁移：`boat1`、`ballon1`、`cloud1`、`planet1`。
 - 道具权重和冷却 UI 化。
 - 击杀归因优化。

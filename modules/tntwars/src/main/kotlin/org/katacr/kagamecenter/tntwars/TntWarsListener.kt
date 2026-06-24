@@ -7,6 +7,7 @@ import org.bukkit.entity.TNTPrimed
 import org.bukkit.entity.minecart.ExplosiveMinecart
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityExplodeEvent
 import org.bukkit.event.entity.EntityShootBowEvent
 import org.bukkit.event.entity.ProjectileHitEvent
@@ -27,8 +28,9 @@ class TntWarsListener(
         session.handleMove(event.player, to)
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler
     fun onInteract(event: PlayerInteractEvent) {
+        if (event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) return
         val room = roomManager.getPlayerRoom(event.player) ?: return
         val session = room.session as? TntWarsGameSession ?: return
         if (session.handleInteract(event)) {

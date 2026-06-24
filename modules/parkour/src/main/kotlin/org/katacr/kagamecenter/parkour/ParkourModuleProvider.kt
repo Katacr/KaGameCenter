@@ -18,7 +18,7 @@ class ParkourModuleProvider : GameModuleProvider {
             "lang"
         ) { path -> javaClass.classLoader.getResourceAsStream(path) }
         language.reload()
-        context.registerModule(ParkourGameModule(configService, context.worldService, language, context.packetService, context.roomManager, context.resultService))
+        context.registerModule(ParkourGameModule(context.plugin, configService, context.worldService, language, context.packetService, context.roomManager, context.resultService))
         context.registerAdminCommand(
             ParkourAdminCommand(
                 configService,

@@ -17,6 +17,15 @@ game:
   fall-y: -32.0
   checkpoint-glow-seconds: 3
   checkpoint-glow-color: "yellow"
+  rewards:
+    enabled: true
+    base-points: 1000
+    minimum-points: 1
+    time-penalty-per-second: 10
+    rank-bonus:
+      - 100
+      - 50
+      - 25
 
 spectator:
   enabled: true

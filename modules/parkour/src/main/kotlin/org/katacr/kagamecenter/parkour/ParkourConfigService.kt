@@ -39,6 +39,13 @@ class ParkourConfigService(
             fallY = config.getDouble("game.fall-y", -32.0),
             checkpointGlowSeconds = config.getInt("game.checkpoint-glow-seconds", 3).coerceIn(1, 30),
             checkpointGlowColor = config.getString("game.checkpoint-glow-color", "yellow") ?: "yellow",
+            rewards = ParkourRewardConfig(
+                enabled = config.getBoolean("game.rewards.enabled", true),
+                basePoints = config.getInt("game.rewards.base-points", 1000).coerceAtLeast(0),
+                minimumPoints = config.getInt("game.rewards.minimum-points", 1).coerceAtLeast(0),
+                timePenaltyPerSecond = config.getInt("game.rewards.time-penalty-per-second", 10).coerceAtLeast(0),
+                rankBonus = config.getIntegerList("game.rewards.rank-bonus").ifEmpty { listOf(100, 50, 25) }
+            ),
             maps = maps
         )
     }
@@ -323,6 +330,11 @@ class ParkourConfigService(
         config.addDefault("game.fall-y", -32.0)
         config.addDefault("game.checkpoint-glow-seconds", 3)
         config.addDefault("game.checkpoint-glow-color", "yellow")
+        config.addDefault("game.rewards.enabled", true)
+        config.addDefault("game.rewards.base-points", 1000)
+        config.addDefault("game.rewards.minimum-points", 1)
+        config.addDefault("game.rewards.time-penalty-per-second", 10)
+        config.addDefault("game.rewards.rank-bonus", listOf(100, 50, 25))
         config.addDefault("spectator.enabled", true)
         config.addDefault("spectator.mode", "managed")
         config.options().copyDefaults(true)

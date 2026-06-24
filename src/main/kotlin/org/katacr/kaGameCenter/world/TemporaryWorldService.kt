@@ -200,13 +200,12 @@ class TemporaryWorldService(private val plugin: JavaPlugin) {
     fun saveWorldToTemplate(world: World, templatePath: String?): Boolean {
         ensureReservedFolders()
         if (templatePath.isNullOrBlank()) return false
-        val source = File(Bukkit.getWorldContainer(), world.name)
-        if (!source.exists() || !source.isDirectory) return false
+        val source = worldStorageFolder(world.name) ?: return false
         val target = File(mapsFolder, templatePath.trimStart('/'))
         if (!target.exists() && !target.mkdirs()) return false
 
         world.save()
-        cleanupTemplateWorldData(target)
+        cleanupSavedWorldData(target)
         if (!copyWorldData(source, target)) return false
         cleanupRuntimeWorldIdentity(target)
         return true
@@ -215,12 +214,11 @@ class TemporaryWorldService(private val plugin: JavaPlugin) {
     fun saveWorldToDirectory(world: World, target: File?): Boolean {
         ensureReservedFolders()
         if (target == null) return false
-        val source = File(Bukkit.getWorldContainer(), world.name)
-        if (!source.exists() || !source.isDirectory) return false
+        val source = worldStorageFolder(world.name) ?: return false
         if (!target.exists() && !target.mkdirs()) return false
 
         world.save()
-        cleanupTemplateWorldData(target)
+        cleanupSavedWorldData(target)
         if (!copyWorldData(source, target)) return false
         cleanupRuntimeWorldIdentity(target)
         return true
@@ -261,6 +259,17 @@ class TemporaryWorldService(private val plugin: JavaPlugin) {
                 file.deleteRecursively()
             }
             if (file.isFile && file.name in worldDataFiles) {
+                file.delete()
+            }
+        }
+    }
+
+    private fun cleanupSavedWorldData(target: File) {
+        target.listFiles()?.forEach { file ->
+            if (file.isDirectory && file.name in templateCleanupDirectories) {
+                file.deleteRecursively()
+            }
+            if (file.isFile && file.name in transientWorldDataFiles) {
                 file.delete()
             }
         }
@@ -335,6 +344,15 @@ class TemporaryWorldService(private val plugin: JavaPlugin) {
             }
         }
         return deleted
+    }
+
+    private fun worldStorageFolder(worldName: String): File? {
+        val container = Bukkit.getWorldContainer()
+        val candidates = listOf(
+            File(container, worldName),
+            File(File(File(File(container, "world"), "dimensions"), "minecraft"), worldName)
+        )
+        return candidates.firstOrNull { it.isDirectory && primaryWorldDataFolder(it) != null }
     }
 
     private fun copyWorldData(source: File, target: File): Boolean {
@@ -423,5 +441,6 @@ class TemporaryWorldService(private val plugin: JavaPlugin) {
             "advancements",
             "stats"
         )
+        private val transientWorldDataFiles = setOf("session.lock", "uid.dat")
     }
 }

@@ -64,6 +64,10 @@ class TntWarsGameSession(
     private val playerRuntimeStateService: PlayerRuntimeStateService,
     private val roomBroadcastService: RoomBroadcastService
 ) : GameSession {
+    private companion object {
+        const val BLAST_ATTRIBUTION_MILLIS = 15_000L
+    }
+
     override fun usesCustomScoreboard(): Boolean = true
     override fun usesCustomActionBar(): Boolean = true
 
@@ -173,7 +177,7 @@ class TntWarsGameSession(
     }
 
     override fun onPlayerDeath(player: Player) {
-        eliminate(player, killerId = player.killer?.uniqueId, recordDeath = false)
+        eliminate(player, killerId = player.killer?.uniqueId, recordDeath = false, recordStats = false)
     }
 
     override fun onEnd() {
@@ -181,10 +185,7 @@ class TntWarsGameSession(
             restore(player)
             player.sendMessage(Component.text(language.getMessage("tntwars.ended")))
         }
-        room.world?.entities
-            ?.filter { it !is Player }
-            ?.filter { it.scoreboardTags.contains("kgc_tntwars") }
-            ?.forEach(Entity::remove)
+        cleanupExplosiveEntities()
     }
 
     override fun onClose() {
@@ -201,11 +202,12 @@ class TntWarsGameSession(
         if (!state.alive) return
         val configured = gameConfig ?: return
         if (to.y <= (configured.voidY ?: config.defaultVoidY)) {
-            eliminate(player, state.lastBlastOwner, recordDeath = true)
+            eliminate(player, recentBlastOwner(state), recordDeath = true)
             return
         }
         if (configured.playRegion?.contains(to, ignoreWorld = true) == false) {
             state.lastBlastOwner = null
+            state.lastBlastAt = 0L
         }
     }
 
@@ -235,8 +237,9 @@ class TntWarsGameSession(
     }
 
     fun handleExplosion(entity: Entity, location: Location) {
-        val record = entityOwnershipService.remove(entity.uniqueId) ?: return
+        val record = entityOwnershipService.record(entity.uniqueId) ?: return
         if (record.roomId != room.id) return
+        entityOwnershipService.remove(entity.uniqueId)
         val ownerId = record.ownerId
         val ownerTeam = states[ownerId]?.team ?: return
         val now = System.currentTimeMillis()
@@ -271,8 +274,9 @@ class TntWarsGameSession(
 
     fun handleProjectileHit(event: ProjectileHitEvent): Boolean {
         val projectile = event.entity
-        val record = entityOwnershipService.remove(projectile.uniqueId) ?: return false
+        val record = entityOwnershipService.record(projectile.uniqueId) ?: return false
         if (record.roomId != room.id || record.type != "tnt_bow_arrow") return false
+        entityOwnershipService.remove(projectile.uniqueId)
         val ownerId = record.ownerId
         val owner = Bukkit.getPlayer(ownerId) ?: return false
         val itemConfig = config.items[TntWarsItemType.TNT_BOW] ?: return false
@@ -528,7 +532,7 @@ class TntWarsGameSession(
         return true
     }
 
-    private fun eliminate(player: Player, killerId: UUID?, recordDeath: Boolean) {
+    private fun eliminate(player: Player, killerId: UUID?, recordDeath: Boolean, recordStats: Boolean = true) {
         val state = states[player.uniqueId] ?: return
         if (!state.alive) return
         state.alive = false
@@ -538,10 +542,10 @@ class TntWarsGameSession(
         val killer = killerId?.let(Bukkit::getPlayer)
             ?.takeIf { it.uniqueId != player.uniqueId && states[it.uniqueId]?.alive == true }
         if (killer != null) {
-            resultService.recordKill(room, killer.uniqueId, player.uniqueId, points = 1)
+            if (recordStats) resultService.recordKill(room, killer.uniqueId, player.uniqueId, points = 1)
             broadcastRaw(language.getMessage("tntwars.eliminated_by", player.name, killer.name, teamName(state.team), aliveCount(state.team)))
         } else {
-            if (recordDeath) resultService.recordDeath(room, player.uniqueId)
+            if (recordStats && recordDeath) resultService.recordDeath(room, player.uniqueId)
             broadcastRaw(language.getMessage("tntwars.eliminated", player.name, teamName(state.team), aliveCount(state.team)))
         }
         checkWin()
@@ -577,10 +581,7 @@ class TntWarsGameSession(
             }
             player.gameMode = GameMode.SPECTATOR
         }
-        room.world?.entities
-            ?.filter { it !is Player }
-            ?.filter { it.scoreboardTags.contains("kgc_tntwars") }
-            ?.forEach(Entity::remove)
+        cleanupExplosiveEntities()
     }
 
     private fun updateScoreboards() {
@@ -600,10 +601,26 @@ class TntWarsGameSession(
     }
 
     private fun restore(player: Player) {
-        if (playerRuntimeStateService.restore(room.id, player)) return
         SidebarBoardRenderer.clear(player)
+        if (playerRuntimeStateService.restore(room.id, player)) return
         player.removePotionEffect(PotionEffectType.RESISTANCE)
         player.removePotionEffect(PotionEffectType.GLOWING)
+    }
+
+    private fun recentBlastOwner(state: TntWarsPlayerState): UUID? {
+        val ownerId = state.lastBlastOwner ?: return null
+        val age = System.currentTimeMillis() - state.lastBlastAt
+        if (age in 0..BLAST_ATTRIBUTION_MILLIS) return ownerId
+        state.lastBlastOwner = null
+        state.lastBlastAt = 0L
+        return null
+    }
+
+    private fun cleanupExplosiveEntities() {
+        room.world?.entities
+            ?.filter { it !is Player }
+            ?.filter { it.scoreboardTags.contains("kgc_tntwars") || it.scoreboardTags.contains("kgc_tntwars_arrow") }
+            ?.forEach(Entity::remove)
     }
 
     private fun aliveCount(team: TntWarsTeam): Int {

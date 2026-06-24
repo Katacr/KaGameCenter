@@ -4,9 +4,11 @@ import org.bukkit.entity.Player
 import org.bukkit.entity.Snowball
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
+import org.bukkit.event.block.Action
 import org.bukkit.event.entity.EntityDamageByEntityEvent
 import org.bukkit.event.entity.ProjectileHitEvent
 import org.bukkit.event.player.PlayerMoveEvent
+import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.event.player.PlayerToggleSneakEvent
 import org.katacr.kaGameCenter.game.GameRoomManager
 
@@ -33,6 +35,15 @@ class BlockhuntListener(
     }
 
     @EventHandler(ignoreCancelled = true)
+    fun onInteract(event: PlayerInteractEvent) {
+        if (event.action != Action.LEFT_CLICK_BLOCK) return
+        val block = event.clickedBlock ?: return
+        val room = roomManager.getPlayerRoom(event.player) ?: return
+        val session = room.session as? BlockhuntGameSession ?: return
+        event.isCancelled = !session.handleLockedBlockHit(event.player, block)
+    }
+
+    @EventHandler(ignoreCancelled = true)
     fun onDamage(event: EntityDamageByEntityEvent) {
         val attacker = event.damager as? Player ?: return
         val room = roomManager.getPlayerRoom(attacker) ?: return
@@ -52,13 +63,17 @@ class BlockhuntListener(
         val shooter = snowball.shooter as? Player ?: return
         val room = roomManager.getPlayerRoom(shooter) ?: return
         val session = room.session as? BlockhuntGameSession ?: return
-        val hit = event.hitEntity ?: return
-        val victim = hit as? Player
-        if (victim != null) {
-            if (roomManager.getPlayerRoom(victim)?.id != room.id) return
-            event.isCancelled = !session.handleSnowballHit(shooter, victim)
-        } else {
-            event.isCancelled = !session.handleLockedDisguiseSnowballHit(shooter, hit)
+        event.hitEntity?.let { hit ->
+            val victim = hit as? Player
+            event.isCancelled = if (victim != null) {
+                if (roomManager.getPlayerRoom(victim)?.id != room.id) return
+                !session.handleSnowballHit(shooter, victim)
+            } else {
+                !session.handleLockedDisguiseSnowballHit(shooter, hit)
+            }
+            return
         }
+        val block = event.hitBlock ?: return
+        event.isCancelled = !session.handleLockedBlockSnowballHit(shooter, block)
     }
 }

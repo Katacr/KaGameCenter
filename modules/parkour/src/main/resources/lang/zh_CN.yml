@@ -11,14 +11,21 @@ parkour:
   checkpoint_reached: "§a到达 {0}"
   checkpoint_returned: "§e已返回上一个检查点。"
   buff_speed: "§b获得速度 II，持续 {0} 秒。"
-  finished: "§a完成跑酷！用时 {0}，预计点数 +{1}。"
+  finished: "§a完成跑酷！用时 {0}，统计点数 +{1}。"
   finish_countdown_started: "§e首位玩家已完成，结束倒计时 {0} 秒。"
   remaining_actionbar: "§7距离终点剩余 §f{0}m"
+  spectator_ready: "§7已进入完成观战模式。"
+  spectator_next: "§b观战下一名玩家"
+  spectator_return: "§e返回终点"
+  spectator_leave: "§c离开房间"
+  spectator_no_targets: "§7没有可观战的未完成玩家。"
+  spectator_following: "§7正在观战 §f{0}"
+  spectator_returned: "§7已返回终点。"
   result_header: "§6跑酷结算"
   result_empty: "§7暂无成绩。"
   result_line_finished: "§e#{0} §f{1} §a{2}"
   result_line_distance: "§e#{0} §f{1} §7{2}m"
-  result_rewards_preview: "§7奖励预览：经验/金币接口预留，当前仅显示。"
+  result_rewards_preview: "§7奖励：完成玩家已记录胜场和统计点数，未完成玩家已记录失败。"
   admin_reloaded: "§a跑酷配置已重载。"
   admin_saved: "§a已保存 {0}: §f{1}/{2}"
   admin_checkpoint_added: "§a已保存检查点 {0}: §f{1}/{2}"
@@ -71,6 +78,7 @@ parkour:
   editor_open_failed: "§c打开私有编辑世界失败。"
   editor_opened: "§a已打开私有编辑世界: §f{0}"
   editor_saved: "§a已保存私有地图快照。"
+  editor_save_no_session: "§e当前没有打开私有编辑世界；已确认私有地图快照存在。请先打开编辑世界，修改后再保存。"
   editor_save_failed: "§c保存私有地图快照失败。"
   editor_closed: "§a已关闭私有编辑世界。"
   editor_close_failed: "§c关闭私有编辑世界失败。"
@@ -88,20 +96,14 @@ parkour:
   admin_help: |-
     §6跑酷管理指令
     §e/{0} admin parkour reload §7重载跑酷配置
-    §e/{0} admin parkour edit <map> §7生成编辑世界并进入编辑模式
-    §e/{0} admin parkour saveedit [map] §7保存当前编辑世界到模板目录
-    §e/{0} admin parkour closeedit [map] §7保存并关闭编辑世界
-    §e/{0} admin parkour maps §7查看地图
-    §e/{0} admin parkour routes <map> §7查看路线
-    §e/{0} admin parkour setlobby <map> <route> §7设置等待大厅
-    §e/{0} admin parkour setstart <map> <route> §7设置起点出生点
-    §e/{0} admin parkour setstartregion <map> <route> §7用当前选区设置起点区域
-    §e/{0} admin parkour addcheckpoint <map> <route> <id> §7用当前选区添加检查点，当前位置为复活点
+    §7以下指令需在托管游戏私有编辑世界内使用
+    §e/{0} admin parkour setlobby §7设置等待大厅
+    §e/{0} admin parkour setstart §7设置起点出生点
+    §e/{0} admin parkour setstartregion §7用当前选区设置起点区域
     §e/{0} admin parkour addcheckpoint [编号] §7在当前托管游戏编辑世界中添加检查点，不填则自动使用数字编号
-    §e/{0} admin parkour setfinish <map> <route> §7用当前选区设置终点
-    §e/{0} admin parkour removecheckpoint <map> <route> <id> §7删除检查点
+    §e/{0} admin parkour setfinish §7用当前选区设置终点
     §e/{0} admin parkour removecheckpoint <编号> §7删除当前托管游戏编辑世界中的检查点
-    §e/{0} admin parkour addspeedbuff <map> <route> <id> §7在当前位置添加速度II道具
-    §e/{0} admin parkour removebuff <map> <route> <id> §7删除道具点
+    §e/{0} admin parkour addspeedbuff [编号] §7在当前位置添加速度II道具
+    §e/{0} admin parkour removebuff <编号> §7删除道具点
     §e/{0} admin parkour preview §7预览当前选区
-    §e/{0} admin parkour previewall <map> <route> §7预览整条路线所有检查点和终点
+    §e/{0} admin parkour previewall §7预览当前托管游戏路线所有检查点和终点
