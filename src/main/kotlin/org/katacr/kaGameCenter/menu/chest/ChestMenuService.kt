@@ -114,18 +114,27 @@ class ChestMenuService(
         val source = dataSources.get(type) ?: return
         val button = holder.buttons?.getConfigurationSectionForType(type) ?: return
         val entries = source.entries(player, holder.context)
-        val pageSize = slots.size.coerceAtLeast(1)
-        val page = holder.currentPage.coerceAtLeast(0)
-        val maxPage = ceil(entries.size / pageSize.toDouble()).toInt().coerceAtLeast(1) - 1
-        holder.currentPage = page.coerceAtMost(maxPage)
-        val offset = holder.currentPage * pageSize
-        val pageEntries = entries.drop(offset).take(pageSize)
+        val paginate = button.getBoolean("paginate", true)
+        val pageEntries: List<ChestMenuEntry>
+        val maxPage: Int?
+        if (paginate) {
+            val pageSize = slots.size.coerceAtLeast(1)
+            val page = holder.currentPage.coerceAtLeast(0)
+            maxPage = ceil(entries.size / pageSize.toDouble()).toInt().coerceAtLeast(1) - 1
+            holder.currentPage = page.coerceAtMost(maxPage)
+            val offset = holder.currentPage * pageSize
+            pageEntries = entries.drop(offset).take(pageSize)
+        } else {
+            maxPage = null
+            pageEntries = entries.take(slots.size)
+        }
         slots.forEachIndexed { index, slot ->
             val entry = pageEntries.getOrNull(index) ?: return@forEachIndexed
-            val variables = holder.context + entry.variables + mapOf(
+            val variables = holder.context + entry.variables + buildMap {
+                maxPage?.let { put("menu.max_page", it.toString()) }
+            } + mapOf(
                 "menu.id" to holder.menuId,
                 "menu.page" to holder.currentPage.toString(),
-                "menu.max_page" to maxPage.toString(),
                 "viewer.name" to player.name,
                 "viewer.uuid" to player.uniqueId.toString()
             )

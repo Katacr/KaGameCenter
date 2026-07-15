@@ -12,6 +12,9 @@ import org.katacr.kaGameCenter.game.GameMapInfo
 import org.katacr.kaGameCenter.game.GameMapManager
 import org.katacr.kaGameCenter.game.GameRoom
 import org.katacr.kaGameCenter.game.GameRoomManager
+import org.katacr.kaGameCenter.game.GameState
+import org.katacr.kaGameCenter.event.GameRoomsMenuOpenedEvent
+import org.katacr.kaGameCenter.event.GameStatsMenuOpenedEvent
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.menu.chest.ChestMenuService
 import org.katacr.kaGameCenter.team.GameTeam
@@ -64,6 +67,28 @@ class GameCenterMenuService(
         openOrFallback(player, mainMenuConfig(player), "kagamecenter:main")
     }
 
+    /** 打开玩家全部玩法战绩概览，或指定玩法的详细统计。 */
+    fun openStatsMenu(player: Player, gameId: String? = null) {
+        val selectedGame = gameId?.trim()?.takeIf(String::isNotBlank)
+            ?: roomManager.getPlayerRoom(player)?.module?.id
+        val config = if (selectedGame == null) {
+            statsOverviewConfig(player)
+        } else {
+            statsDetailConfig(player, selectedGame)
+        }
+        val suffix = selectedGame?.let { ":$it" }.orEmpty()
+        if (openOrFallback(player, config, "kagamecenter:stats$suffix")) {
+            publishStatsMenuOpened(player, selectedGame)
+        }
+    }
+
+    /** 忽略当前房间并强制打开全部玩法战绩概览。 */
+    private fun openStatsOverview(player: Player) {
+        if (openOrFallback(player, statsOverviewConfig(player), "kagamecenter:stats")) {
+            publishStatsMenuOpened(player, null)
+        }
+    }
+
     fun openGamesMenu(player: Player) {
         openOrFallback(player, gamesMenuConfig(), "kagamecenter:games")
     }
@@ -76,28 +101,58 @@ class GameCenterMenuService(
         openOrFallback(player, createMapSelectMenuConfig(gameId), "kagamecenter:create-map:$gameId")
     }
 
-    fun openRoomsMenu(player: Player) {
-        openOrFallback(player, roomsMenuConfig(), "kagamecenter:rooms")
+    /** 打开全局房间列表，或按模块/玩法 ID 与可选分组打开房间选择器。 */
+    @JvmOverloads
+    fun openRoomsMenu(player: Player, gameId: String? = null, group: String? = null) {
+        val selectedGame = gameId?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+        val selectedGroup = selectedGame?.let { normalizeSelectorGroup(group) }
+        val suffix = selectedGame?.let { ":$it" }.orEmpty() + selectedGroup?.let { ":group:$it" }.orEmpty()
+        if (openOrFallback(player, roomsMenuConfig(selectedGame, selectedGroup), "kagamecenter:rooms$suffix")) {
+            Bukkit.getPluginManager().callEvent(GameRoomsMenuOpenedEvent(player, selectedGame, selectedGroup))
+        }
     }
 
-    fun openRoomMenu(player: Player, roomId: String) {
+    /** 打开房间详情，并保留返回房间列表时使用的玩法与分组筛选。 */
+    @JvmOverloads
+    fun openRoomMenu(player: Player, roomId: String, roomsGameId: String? = null, roomsGroup: String? = null) {
+        val selectedGame = roomsGameId?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+        val selectedGroup = selectedGame?.let { normalizeSelectorGroup(roomsGroup) }
         val room = roomManager.getRoom(roomId)
         if (room == null) {
             player.sendMessage(Component.text(languageManager.getMessage("command.room_not_found", roomId)))
-            openRoomsMenu(player)
+            openRoomsMenu(player, selectedGame, selectedGroup)
             return
         }
-        openOrFallback(player, roomMenuConfig(room, player), "kagamecenter:room:$roomId")
+        val suffix = selectedGame?.let { ":from:$it" }.orEmpty() + selectedGroup?.let { ":group:$it" }.orEmpty()
+        openOrFallback(
+            player,
+            roomMenuConfig(room, player, selectedGame, selectedGroup),
+            "kagamecenter:room:$roomId$suffix"
+        )
     }
 
-    private fun openMemberMenu(player: Player, roomId: String, targetId: UUID) {
+    /** 打开成员操作菜单，并保留其来源房间列表的玩法与分组筛选。 */
+    private fun openMemberMenu(
+        player: Player,
+        roomId: String,
+        targetId: UUID,
+        roomsGameId: String? = null,
+        roomsGroup: String? = null
+    ) {
+        val selectedGame = roomsGameId?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+        val selectedGroup = selectedGame?.let { normalizeSelectorGroup(roomsGroup) }
         val room = roomManager.getRoom(roomId)
         if (room == null || !room.players.contains(targetId)) {
             player.sendMessage(Component.text(languageManager.getMessage("command.room_not_found", roomId)))
-            openRoomsMenu(player)
+            openRoomsMenu(player, selectedGame, selectedGroup)
             return
         }
-        openOrFallback(player, memberMenuConfig(room, targetId), "kagamecenter:room-member:$roomId/$targetId")
+        val suffix = selectedGame?.let { ":from:$it" }.orEmpty() + selectedGroup?.let { ":group:$it" }.orEmpty()
+        openOrFallback(
+            player,
+            memberMenuConfig(room, targetId, selectedGame, selectedGroup),
+            "kagamecenter:room-member:$roomId/$targetId$suffix"
+        )
     }
 
     fun openMapsMenu(player: Player) {
@@ -130,10 +185,16 @@ class GameCenterMenuService(
         openOrFallback(player, createMapConfig(gameId), "kagamecenter:map-create:$gameId")
     }
 
-    private fun openOrFallback(player: Player, config: YamlConfiguration, contextId: String) {
-        if (!openKaMenuConfig(player, config, contextId) && chestMenuService?.openConfig(player, config, contextId) != true) {
-            fallbackDialogService.openMainDialog(player)
-        }
+    private fun openOrFallback(player: Player, config: YamlConfiguration, contextId: String): Boolean {
+        if (openKaMenuConfig(player, config, contextId)) return true
+        if (chestMenuService?.openConfig(player, config, contextId) == true) return true
+        fallbackDialogService.openMainDialog(player)
+        return false
+    }
+
+    /** 发布已完成 KaMenu、箱子或原生回退链的战绩菜单打开上下文。 */
+    private fun publishStatsMenuOpened(player: Player, gameId: String?) {
+        Bukkit.getPluginManager().callEvent(GameStatsMenuOpenedEvent(player, gameId))
     }
 
     fun openExternalConfig(player: Player, config: YamlConfiguration, contextId: String): Boolean {
@@ -217,15 +278,27 @@ class GameCenterMenuService(
             val parts = payload.split(Regex("\\s+")).filter { it.isNotBlank() }
             when (parts.firstOrNull()) {
                 "open-main" -> openMainMenu(player)
+                "open-stats" -> openStatsMenu(player, parts.getOrNull(1))
+                "open-stats-overview" -> openStatsOverview(player)
                 "open-games" -> openGamesMenu(player)
                 "open-create-game" -> openCreateGameMenu(player)
                 "open-create-map" -> parts.getOrNull(1)?.let { openCreateMapSelectMenu(player, it) }
                 "open-admin-manage" -> if (requireAdmin(player)) openAdminManageMenu(player)
                 "open-admin-managed-games" -> if (requireAdmin(player)) openAdminManagedGamesMenu(player)
                 "open-admin-game-editor" -> if (requireAdmin(player)) parts.getOrNull(1)?.let { managedGameCatalog.openEditor(player, it) }
-                "open-rooms" -> openRoomsMenu(player)
-                "open-room" -> parts.getOrNull(1)?.let { openRoomMenu(player, it) }
-                "open-member" -> if (parts.size >= 3) openMemberMenu(player, parts[1], UUID.fromString(parts[2]))
+                "open-rooms" -> openRoomsMenu(player, parts.getOrNull(1), parts.getOrNull(2))
+                "open-room" -> parts.getOrNull(1)?.let {
+                    openRoomMenu(player, it, parts.getOrNull(2), parts.getOrNull(3))
+                }
+                "open-member" -> if (parts.size >= 3) {
+                    openMemberMenu(
+                        player,
+                        parts[1],
+                        UUID.fromString(parts[2]),
+                        parts.getOrNull(3),
+                        parts.getOrNull(4)
+                    )
+                }
                 "open-maps" -> openMapsMenu(player)
                 "open-maps-game" -> parts.getOrNull(1)?.let { openMapsForGameMenu(player, it) }
                 "open-map" -> if (parts.size >= 3) openMapMenu(player, parts[1], parts[2])
@@ -258,16 +331,19 @@ class GameCenterMenuService(
                 "close-room" -> if (requireAdmin(player)) parts.getOrNull(1)?.let { closeRoom(player, it) }
                 "kick-player" -> if (parts.size >= 3 && requireRoomOwner(player, parts[1])) {
                     if (roomManager.kickPlayer(parts[1], UUID.fromString(parts[2]))) {
-                        openRoomMenu(player, parts[1])
+                        openRoomMenu(player, parts[1], parts.getOrNull(3), parts.getOrNull(4))
                     }
                 }
                 "transfer-owner" -> if (parts.size >= 3 && requireRoomOwner(player, parts[1])) {
                     if (roomManager.transferOwner(parts[1], UUID.fromString(parts[2]))) {
-                        openRoomMenu(player, parts[1])
+                        openRoomMenu(player, parts[1], parts.getOrNull(3), parts.getOrNull(4))
                     }
                 }
                 "join-team" -> if (parts.size >= 3) {
-                    if (teamService.join(parts[1], player, parts[2])) {
+                    val room = roomManager.getRoom(parts[1])
+                    if (room?.state == GameState.WAITING && player.uniqueId in room.players &&
+                        teamService.join(parts[1], player, parts[2])
+                    ) {
                         openRoomMenu(player, parts[1])
                     }
                 }
@@ -458,6 +534,7 @@ class GameCenterMenuService(
                 languageManager.getMessage("menu.rooms_line", roomRows.size)
             },
             "menu.button_create_room" to languageManager.getMessage("menu.button_create_room"),
+            "menu.button_stats" to languageManager.getMessage("menu.button_stats"),
             "menu.button_room_detail" to languageManager.getMessage("menu.button_room_detail"),
             "menu.button_join_room_list" to languageManager.getMessage("menu.button_join_room_list"),
             "menu.button_leave" to languageManager.getMessage("menu.button_leave"),
@@ -492,6 +569,7 @@ class GameCenterMenuService(
             multi(columns = 2)
             button("create", languageManager.getMessage("menu.button_create_room"), "kgc:open-create-game")
             button("rooms", languageManager.getMessage("menu.button_join_room_list"), "kgc:open-rooms")
+            button("stats", languageManager.getMessage("menu.button_stats"), "kgc:open-stats")
             if (roomManager.getPlayerRoom(player) != null) {
                 button("leave", languageManager.getMessage("menu.button_leave"), "kgc:leave")
             }
@@ -530,6 +608,78 @@ class GameCenterMenuService(
             button("refresh", languageManager.getMessage("menu.button_refresh"), "kgc:open-games")
             exit("kgc:open-main", languageManager.getMessage("menu.button_back"))
         }
+    }
+
+    /** 构建玩家已有玩法战绩的概览菜单。 */
+    private fun statsOverviewConfig(player: Player): YamlConfiguration {
+        val gameIds = buildSet {
+            roomManager.statsSnapshot(player.uniqueId).forEach { add(it.gameId) }
+            roomManager.metricSnapshot(player.uniqueId).forEach { add(it.gameId) }
+        }.sorted()
+        return menu(languageManager.getMessage("stats.title")).apply {
+            message("intro", languageManager.getMessage("stats.overview", gameIds.size))
+            if (gameIds.isEmpty()) {
+                message("empty", languageManager.getMessage("stats.no_data"))
+            } else {
+                multi(columns = 1)
+                val statsByGame = roomManager.statsSnapshot(player.uniqueId).associateBy { it.gameId }
+                gameIds.forEachIndexed { index, gameId ->
+                    val stats = statsByGame[gameId]
+                    button(
+                        "game_$index",
+                        languageManager.getMessage("stats.game_button", statsGameName(gameId)),
+                        "kgc:open-stats $gameId",
+                        listOf(languageManager.getMessage(
+                            "stats.game_summary",
+                            stats?.plays ?: 0,
+                            stats?.wins ?: 0,
+                            stats?.kills ?: 0
+                        ))
+                    )
+                }
+            }
+            exit("kgc:open-main", languageManager.getMessage("menu.button_back"))
+        }
+    }
+
+    /** 构建一个玩法的基础统计与扩展指标详情。 */
+    private fun statsDetailConfig(player: Player, gameId: String): YamlConfiguration {
+        val normalizedGameId = gameId.lowercase()
+        val stats = roomManager.statsSnapshot(player.uniqueId)
+            .firstOrNull { it.gameId.equals(normalizedGameId, ignoreCase = true) }
+        val metrics = roomManager.metricSnapshot(player.uniqueId)
+            .filter { it.gameId.equals(normalizedGameId, ignoreCase = true) }
+            .associate { it.metricId to it.value }
+        return menu(languageManager.getMessage("stats.detail_title", statsGameName(normalizedGameId))).apply {
+            message("detail", buildList {
+                add(languageManager.getMessage("stats.plays", stats?.plays ?: 0))
+                add(languageManager.getMessage("stats.wins", stats?.wins ?: 0))
+                add(languageManager.getMessage("stats.losses", stats?.losses ?: 0))
+                add(languageManager.getMessage("stats.kills", stats?.kills ?: 0))
+                add(languageManager.getMessage("stats.deaths", stats?.deaths ?: 0))
+                add(languageManager.getMessage("stats.final_kills", metrics["final-kills"] ?: 0))
+                add(languageManager.getMessage("stats.final_deaths", metrics["final-deaths"] ?: 0))
+                add(languageManager.getMessage("stats.beds_destroyed", metrics["beds-destroyed"] ?: 0))
+                add(languageManager.getMessage("stats.points", stats?.points ?: 0))
+                val knownMetrics = setOf("final-kills", "final-deaths", "beds-destroyed")
+                metrics.filterKeys { it !in knownMetrics }.toSortedMap().forEach { (metricId, value) ->
+                    add(languageManager.getMessage("stats.metric_generic", metricId, value))
+                }
+            })
+            multi(columns = 1)
+            button("overview", languageManager.getMessage("stats.button_overview"), "kgc:open-stats-overview")
+            val room = roomManager.getPlayerRoom(player)
+            val backAction = room?.let { "kgc:open-room ${it.id}" } ?: "kgc:open-main"
+            exit(backAction, languageManager.getMessage("menu.button_back"))
+        }
+    }
+
+    /** 返回已注册玩法的显示名，未知历史 ID 保留原值。 */
+    private fun statsGameName(gameId: String): String {
+        return roomManager.listDefinitions()
+            .firstOrNull { it.id.equals(gameId, ignoreCase = true) }
+            ?.displayName
+            ?: gameId
     }
 
     private fun createGameMenuConfig(): YamlConfiguration {
@@ -610,20 +760,39 @@ class GameCenterMenuService(
         }
     }
 
-    private fun roomsMenuConfig(): YamlConfiguration {
-        templateMenuConfig("rooms") { renderDynamicButtons(it) }?.let { return it }
+    /** 构建全局、指定玩法或玩法分组的房间列表，并保持完整筛选上下文。 */
+    private fun roomsMenuConfig(gameId: String?, group: String?): YamlConfiguration {
+        val rooms = roomRows(gameId, group)
+        val gameName = gameId?.let(::roomFilterName)
+        val filterName = gameName?.let { name -> group?.let { "$name [$it]" } ?: name }
+        val listAction = roomListAction(gameId, group)
+        val title = filterName?.let { languageManager.getMessage("menu.rooms_filtered_title", it) }
+            ?: languageManager.getMessage("menu.rooms_title")
+        val line = when {
+            rooms.isEmpty() && filterName != null -> languageManager.getMessage("menu.rooms_filtered_empty", filterName)
+            rooms.isEmpty() -> languageManager.getMessage("room.status_empty")
+            filterName != null -> languageManager.getMessage("menu.rooms_filtered_line", filterName, rooms.size)
+            else -> languageManager.getMessage("menu.rooms_line", rooms.size)
+        }
+        templateMenuConfig(
+            "rooms",
+            extraValues = mapOf(
+                "menu.rooms_title" to title,
+                "menu.rooms_line" to line,
+                "rooms.list_action" to listAction
+            )
+        ) {
+            replaceLegacyMenuAction(it, "Bottom.buttons.header_detail.actions", "kgc:open-rooms", listAction)
+            replaceLegacyMenuAction(it, "Bottom.buttons.top_refresh.actions", "kgc:open-rooms", listAction)
+            renderDynamicButtons(it, gameId = gameId, roomsGroup = group)
+        }?.let { return it }
 
-        return menu(languageManager.getMessage("menu.rooms_title")).apply {
-            val rooms = roomRows()
-            message("intro", if (rooms.isEmpty()) {
-                languageManager.getMessage("room.status_empty")
-            } else {
-                languageManager.getMessage("menu.rooms_line", rooms.size)
-            })
+        return menu(title).apply {
+            message("intro", line)
             multi(columns = 3)
-            button("header_detail", languageManager.getMessage("menu.button_room_detail"), "kgc:open-rooms", width = ROOM_INFO_BUTTON_WIDTH)
+            button("header_detail", languageManager.getMessage("menu.button_room_detail"), listAction, width = ROOM_INFO_BUTTON_WIDTH)
             button("create", languageManager.getMessage("menu.button_create_room"), "kgc:open-create-game", width = ROOM_ACTION_BUTTON_WIDTH)
-            button("top_refresh", languageManager.getMessage("menu.button_refresh"), "kgc:open-rooms", width = ROOM_ACTION_BUTTON_WIDTH)
+            button("top_refresh", languageManager.getMessage("menu.button_refresh"), listAction, width = ROOM_ACTION_BUTTON_WIDTH)
             rooms.forEachIndexed { index, room ->
                 button(
                     "room_${index}_info",
@@ -637,10 +806,11 @@ class GameCenterMenuService(
                         room.maxPlayers,
                         languageManager.getStateName(room.state)
                     ),
-                    room.infoAction,
+                    roomInfoAction(room, gameId, group),
                     listOf(
                         languageManager.getMessage("velocity.room_server", room.serverId),
                         languageManager.getMessage("display.sidebar_game", room.gameName),
+                        languageManager.getMessage("menu.room_group", room.group),
                         languageManager.getMessage("display.sidebar_state", languageManager.getStateName(room.state))
                     ),
                     width = ROOM_INFO_BUTTON_WIDTH
@@ -652,10 +822,17 @@ class GameCenterMenuService(
         }
     }
 
-    private fun roomMenuConfig(room: GameRoom, viewer: Player): YamlConfiguration {
-        templateRoomMenuConfig(room, viewer)?.let { return it }
+    /** 构建房间详情，并把列表筛选上下文写入刷新、成员和返回动作。 */
+    private fun roomMenuConfig(
+        room: GameRoom,
+        viewer: Player,
+        roomsGameId: String?,
+        roomsGroup: String?
+    ): YamlConfiguration {
+        templateRoomMenuConfig(room, viewer, roomsGameId, roomsGroup)?.let { return it }
 
         val maxPlayers = room.definition?.maxPlayers ?: room.module.maxPlayers
+        val detailAction = roomDetailAction(room.id, roomsGameId, roomsGroup)
         return menu(languageManager.getMessage("menu.room_title", room.id)).apply {
             message("intro", listOf(
                 languageManager.getMessage("display.sidebar_game", room.definition?.displayName ?: room.module.displayName),
@@ -668,16 +845,23 @@ class GameCenterMenuService(
             multi(columns = if (teams.isEmpty()) SOLO_MEMBER_COLUMNS else teams.size.coerceAtLeast(1))
             button("join", languageManager.getMessage("menu.button_join_room"), "kgc:join ${room.id}")
             button("start", languageManager.getMessage("menu.button_start_room"), "kgc:start ${room.id}")
+            button("stats", languageManager.getMessage("menu.button_stats"), "kgc:open-stats ${room.module.id}")
             button("leave", languageManager.getMessage("menu.button_leave"), "kgc:leave")
             button("close_room", languageManager.getMessage("menu.button_close_room"), "kgc:close-room ${room.id}")
-            button("refresh", languageManager.getMessage("menu.button_refresh"), "kgc:open-room ${room.id}")
-            renderRoomMembers(room, teams)
-            exit("kgc:open-rooms", languageManager.getMessage("menu.button_back"))
+            button("refresh", languageManager.getMessage("menu.button_refresh"), detailAction)
+            renderRoomMembers(room, teams, roomsGameId, roomsGroup)
+            exit(roomListAction(roomsGameId, roomsGroup), languageManager.getMessage("menu.button_back"))
         }
     }
 
-    private fun memberMenuConfig(room: GameRoom, targetId: UUID): YamlConfiguration {
-        templateMemberMenuConfig(room, targetId)?.let { return it }
+    /** 构建成员操作菜单，并把来源玩法筛选保留到返回房间详情的动作。 */
+    private fun memberMenuConfig(
+        room: GameRoom,
+        targetId: UUID,
+        roomsGameId: String?,
+        roomsGroup: String?
+    ): YamlConfiguration {
+        templateMemberMenuConfig(room, targetId, roomsGameId, roomsGroup)?.let { return it }
 
         val owner = room.owner
         val isOwner = owner == targetId
@@ -688,14 +872,28 @@ class GameCenterMenuService(
             ))
             multi(columns = 2)
             if (!isOwner) {
-                button("transfer_owner", languageManager.getMessage("menu.button_transfer_owner"), "kgc:transfer-owner ${room.id} $targetId")
+                button(
+                    "transfer_owner",
+                    languageManager.getMessage("menu.button_transfer_owner"),
+                    memberOperationAction("transfer-owner", room.id, targetId, roomsGameId, roomsGroup)
+                )
             }
-            button("kick", languageManager.getMessage("menu.button_kick_player"), "kgc:kick-player ${room.id} $targetId")
-            exit("kgc:open-room ${room.id}", languageManager.getMessage("menu.button_back"))
+            button(
+                "kick",
+                languageManager.getMessage("menu.button_kick_player"),
+                memberOperationAction("kick-player", room.id, targetId, roomsGameId, roomsGroup)
+            )
+            exit(roomDetailAction(room.id, roomsGameId, roomsGroup), languageManager.getMessage("menu.button_back"))
         }
     }
 
-    private fun templateRoomMenuConfig(room: GameRoom, viewer: Player): YamlConfiguration? {
+    /** 从 YAML 模板生成带房间列表筛选上下文的详情菜单。 */
+    private fun templateRoomMenuConfig(
+        room: GameRoom,
+        viewer: Player,
+        roomsGameId: String?,
+        roomsGroup: String?
+    ): YamlConfiguration? {
         val config = templateService.load("room") ?: return null
         val values = templateService.buildContext(
             pluginName = plugin.name,
@@ -706,6 +904,7 @@ class GameCenterMenuService(
             "menu.room_title" to languageManager.getMessage("menu.room_title", room.id),
             "menu.button_join_room" to languageManager.getMessage("menu.button_join_room"),
             "menu.button_start_room" to languageManager.getMessage("menu.button_start_room"),
+            "menu.button_stats" to languageManager.getMessage("menu.button_stats"),
             "menu.button_leave" to languageManager.getMessage("menu.button_leave"),
             "menu.button_close_room" to languageManager.getMessage("menu.button_close_room"),
             "menu.button_refresh" to languageManager.getMessage("menu.button_refresh"),
@@ -713,6 +912,8 @@ class GameCenterMenuService(
             "menu.member_button" to languageManager.getMessage("menu.member_button", "{player.name}"),
             "menu.member_empty" to languageManager.getMessage("menu.member_empty"),
             "menu.member_tooltip" to languageManager.getMessage("menu.member_tooltip", "{player.uuid}"),
+            "room.refresh_action" to roomDetailAction(room.id, roomsGameId, roomsGroup),
+            "rooms.list_action" to roomListAction(roomsGameId, roomsGroup),
             "room.game_line" to languageManager.getMessage("display.sidebar_game", room.definition?.displayName ?: room.module.displayName),
             "room.state_line" to languageManager.getMessage("display.sidebar_state", languageManager.getStateName(room.state)),
             "room.players_line" to languageManager.getMessage("display.sidebar_players", room.players.size, room.definition?.maxPlayers ?: room.module.maxPlayers),
@@ -720,11 +921,29 @@ class GameCenterMenuService(
             "room.owner_line" to languageManager.getMessage("room.owner_line", playerName(room.owner ?: room.players.firstOrNull() ?: UUID(0, 0)))
         )
         templateService.replacePlaceholders(config, values)
-        renderDynamicButtons(config, room)
+        replaceLegacyMenuAction(
+            config,
+            "Bottom.buttons.refresh.actions",
+            "kgc:open-room ${room.id}",
+            roomDetailAction(room.id, roomsGameId, roomsGroup)
+        )
+        replaceLegacyMenuAction(
+            config,
+            "Bottom.exit.actions",
+            "kgc:open-rooms",
+            roomListAction(roomsGameId, roomsGroup)
+        )
+        renderDynamicButtons(config, room, roomsGameId, roomsGroup)
         return config
     }
 
-    private fun templateMemberMenuConfig(room: GameRoom, targetId: UUID): YamlConfiguration? {
+    /** 从 YAML 模板生成带来源玩法筛选上下文的成员菜单。 */
+    private fun templateMemberMenuConfig(
+        room: GameRoom,
+        targetId: UUID,
+        roomsGameId: String?,
+        roomsGroup: String?
+    ): YamlConfiguration? {
         val targetName = playerName(targetId)
         val isOwner = room.owner == targetId
         val config = templateService.load("room_member") ?: return null
@@ -750,8 +969,33 @@ class GameCenterMenuService(
                 "menu.button_kick_player" to languageManager.getMessage("menu.button_kick_player"),
                 "menu.button_back" to languageManager.getMessage("menu.button_back"),
                 "room.id" to room.id,
+                "room.refresh_action" to roomDetailAction(room.id, roomsGameId, roomsGroup),
+                "member.transfer_action" to memberOperationAction(
+                    "transfer-owner", room.id, targetId, roomsGameId, roomsGroup
+                ),
+                "member.kick_action" to memberOperationAction(
+                    "kick-player", room.id, targetId, roomsGameId, roomsGroup
+                ),
                 "player.uuid" to targetId.toString()
             )
+        )
+        replaceLegacyMenuAction(
+            config,
+            "Bottom.buttons.transfer_owner.actions",
+            "kgc:transfer-owner ${room.id} $targetId",
+            memberOperationAction("transfer-owner", room.id, targetId, roomsGameId, roomsGroup)
+        )
+        replaceLegacyMenuAction(
+            config,
+            "Bottom.buttons.kick.actions",
+            "kgc:kick-player ${room.id} $targetId",
+            memberOperationAction("kick-player", room.id, targetId, roomsGameId, roomsGroup)
+        )
+        replaceLegacyMenuAction(
+            config,
+            "Bottom.exit.actions",
+            "kgc:open-room ${room.id}",
+            roomDetailAction(room.id, roomsGameId, roomsGroup)
         )
         return config
     }
@@ -759,18 +1003,21 @@ class GameCenterMenuService(
     private fun renderDynamicButtons(
         config: YamlConfiguration,
         room: GameRoom? = null,
-        gameId: String? = null
+        gameId: String? = null,
+        roomsGroup: String? = null
     ) {
         val buttons = config.getConfigurationSection("Bottom.buttons") ?: return
         buttons.getKeys(false).forEach { key ->
             val section = buttons.getConfigurationSection(key) ?: return@forEach
             when (section.getString("TYPE")?.lowercase()) {
-                "player_slots" -> if (room != null) renderPlayerSlots(config, "Bottom.buttons", key, section, room)
+                "player_slots" -> if (room != null) {
+                    renderPlayerSlots(config, "Bottom.buttons", key, section, room, gameId, roomsGroup)
+                }
                 "game_list" -> renderGameList(config, "Bottom.buttons", key, section)
                 "managed_game_list" -> renderManagedGameList(config, "Bottom.buttons", key, section)
                 "admin_managed_game_rows" -> renderAdminManagedGameRows(config, "Bottom.buttons", key, section)
                 "map_list" -> renderMapList(config, "Bottom.buttons", key, section, gameId ?: section.getString("game-id"))
-                "room_rows" -> renderRoomRows(config, "Bottom.buttons", key, section)
+                "room_rows" -> renderRoomRows(config, "Bottom.buttons", key, section, gameId, roomsGroup)
             }
         }
     }
@@ -861,17 +1108,26 @@ class GameCenterMenuService(
         config: YamlConfiguration,
         parentPath: String,
         key: String,
-        template: org.bukkit.configuration.ConfigurationSection
+        template: org.bukkit.configuration.ConfigurationSection,
+        gameId: String?,
+        roomsGroup: String?
     ) {
         config.set("$parentPath.$key", null)
-        val rooms = roomRows()
+        val rooms = roomRows(gameId, roomsGroup)
         if (rooms.isEmpty()) {
             return
         }
 
         rooms.forEachIndexed { index, room ->
-            val values = roomValues(room, index)
-            copyNamedButtonTemplate(config, "$parentPath.${key}_${index}_info", template, "info", values)
+            val values = roomValues(room, index, gameId, roomsGroup)
+            val infoPath = "$parentPath.${key}_${index}_info"
+            copyNamedButtonTemplate(config, infoPath, template, "info", values)
+            replaceLegacyMenuAction(
+                config,
+                "$infoPath.actions",
+                room.infoAction,
+                roomInfoAction(room, gameId, roomsGroup)
+            )
             copyNamedButtonTemplate(config, "$parentPath.${key}_${index}_join", template, "join", values)
             if (template.contains("refresh-text") || template.contains("refresh-actions")) {
                 copyNamedButtonTemplate(config, "$parentPath.${key}_${index}_refresh", template, "refresh", values)
@@ -886,13 +1142,18 @@ class GameCenterMenuService(
         parentPath: String,
         key: String,
         template: org.bukkit.configuration.ConfigurationSection,
-        room: GameRoom
+        room: GameRoom,
+        roomsGameId: String?,
+        roomsGroup: String?
     ) {
         config.set("$parentPath.$key", null)
         val players = room.players.toList()
         if (players.isEmpty()) {
             config.set("$parentPath.${key}_empty.text", template.getString("empty-text", languageManager.getMessage("menu.member_empty")))
-            config.set("$parentPath.${key}_empty.actions", listOf("kgc:open-room ${room.id}"))
+            config.set(
+                "$parentPath.${key}_empty.actions",
+                listOf(roomDetailAction(room.id, roomsGameId, roomsGroup))
+            )
             return
         }
 
@@ -907,9 +1168,17 @@ class GameCenterMenuService(
                 "player.online" to (Bukkit.getPlayer(playerId) != null).toString(),
                 "player.is_owner" to (room.owner == playerId).toString(),
                 "player.team_id" to (team?.id ?: "-"),
-                "player.team_name" to (team?.displayName ?: "-")
+                "player.team_name" to (team?.displayName ?: "-"),
+                "player.open_action" to memberAction(room.id, playerId, roomsGameId, roomsGroup)
             )
-            copyButtonTemplate(config, "$parentPath.${key}_$index", template, playerValues)
+            val buttonPath = "$parentPath.${key}_$index"
+            copyButtonTemplate(config, buttonPath, template, playerValues)
+            replaceLegacyMenuAction(
+                config,
+                "$buttonPath.actions",
+                "kgc:open-member ${room.id} $playerId",
+                memberAction(room.id, playerId, roomsGameId, roomsGroup)
+            )
         }
     }
 
@@ -973,7 +1242,12 @@ class GameCenterMenuService(
         )
     }
 
-    private fun roomValues(row: RoomMenuRow, index: Int): Map<String, String> {
+    private fun roomValues(
+        row: RoomMenuRow,
+        index: Int,
+        roomsGameId: String?,
+        roomsGroup: String?
+    ): Map<String, String> {
         return mapOf(
             "room.index" to index.toString(),
             "room.number" to (index + 1).toString(),
@@ -983,6 +1257,8 @@ class GameCenterMenuService(
             "room.name" to row.roomName,
             "room.game_id" to row.gameId,
             "room.game_name" to row.gameName,
+            "room.group" to row.group,
+            "room.group_line" to languageManager.getMessage("menu.room_group", row.group),
             "room.map_template" to row.mapId,
             "room.map_id" to row.mapId.substringAfterLast('/'),
             "room.configured_game_id" to row.gameId,
@@ -993,7 +1269,7 @@ class GameCenterMenuService(
             "room.state" to languageManager.getStateName(row.state),
             "room.world" to "-",
             "room.joinable" to row.joinable.toString(),
-            "room.info_action" to row.infoAction,
+            "room.info_action" to roomInfoAction(row, roomsGameId, roomsGroup),
             "room.join_action" to row.joinAction,
             "room.spectate_action" to row.spectateAction
         )
@@ -1008,6 +1284,11 @@ class GameCenterMenuService(
             "room.name" to room.name,
             "room.game_id" to (room.definition?.id ?: room.module.id),
             "room.game_name" to (room.definition?.displayName ?: room.module.displayName),
+            "room.group" to (room.configuredGame?.selectorGroup ?: "default"),
+            "room.group_line" to languageManager.getMessage(
+                "menu.room_group",
+                room.configuredGame?.selectorGroup ?: "default"
+            ),
             "room.map_template" to (room.mapTemplate ?: "-"),
             "room.map_id" to (room.mapTemplate?.substringAfterLast('/') ?: "-"),
             "room.configured_game_id" to (room.configuredGame?.globalId ?: "-"),
@@ -1024,12 +1305,85 @@ class GameCenterMenuService(
         )
     }
 
-    private fun roomRows(): List<RoomMenuRow> {
+    /** 返回可选按模块/玩法 ID 与选择器分组筛选的本地或跨服房间菜单行。 */
+    private fun roomRows(gameId: String? = null, group: String? = null): List<RoomMenuRow> {
         val globalRooms = if (velocityBridgeService.enabled) velocityBridgeService.globalRooms().toList() else emptyList()
-        if (globalRooms.isNotEmpty()) {
-            return globalRooms.map { it.toRoomMenuRow(velocityBridgeService.serverId) }
+        val rows = if (globalRooms.isNotEmpty()) {
+            globalRooms.map { it.toRoomMenuRow(velocityBridgeService.serverId) }
+        } else {
+            roomManager.listRooms().map { it.toRoomMenuRow(velocityBridgeService.serverId) }
         }
-        return roomManager.listRooms().map { it.toRoomMenuRow(velocityBridgeService.serverId) }
+        return rows.filter { row ->
+            val gameMatches = gameId == null || row.moduleId.equals(gameId, ignoreCase = true) ||
+                row.gameId.equals(gameId, ignoreCase = true)
+            val groupMatches = group == null || row.group.equals(group, ignoreCase = true)
+            gameMatches && groupMatches
+        }
+    }
+
+    /** 返回筛选标题使用的模块、托管玩法或房间快照显示名。 */
+    private fun roomFilterName(gameId: String): String {
+        return managedGameCatalog.get(gameId)?.displayName
+            ?: roomManager.listDefinitions().firstOrNull { it.id.equals(gameId, ignoreCase = true) }?.displayName
+            ?: roomManager.listModules().firstOrNull { it.id.equals(gameId, ignoreCase = true) }?.displayName
+            ?: roomRows().firstOrNull {
+                it.moduleId.equals(gameId, ignoreCase = true) || it.gameId.equals(gameId, ignoreCase = true)
+            }?.gameName
+            ?: gameId
+    }
+
+    /** 构造保持可选玩法与分组筛选的房间列表动作。 */
+    private fun roomListAction(gameId: String?, group: String?): String {
+        val context = listOfNotNull(gameId, group).joinToString(" ")
+        return if (context.isBlank()) "kgc:open-rooms" else "kgc:open-rooms $context"
+    }
+
+    /** 构造保持可选玩法与分组筛选的房间详情动作。 */
+    private fun roomDetailAction(roomId: String, gameId: String?, group: String?): String {
+        val context = listOfNotNull(gameId, group).joinToString(" ")
+        return if (context.isBlank()) "kgc:open-room $roomId" else "kgc:open-room $roomId $context"
+    }
+
+    /** 构造保持可选玩法与分组筛选的成员详情动作。 */
+    private fun memberAction(roomId: String, playerId: UUID, gameId: String?, group: String?): String {
+        val base = "kgc:open-member $roomId $playerId"
+        val context = listOfNotNull(gameId, group).joinToString(" ")
+        return if (context.isBlank()) base else "$base $context"
+    }
+
+    /** 构造保持可选玩法与分组筛选的成员管理动作。 */
+    private fun memberOperationAction(
+        operation: String,
+        roomId: String,
+        playerId: UUID,
+        gameId: String?,
+        group: String?
+    ): String {
+        val base = "kgc:$operation $roomId $playerId"
+        val context = listOfNotNull(gameId, group).joinToString(" ")
+        return if (context.isBlank()) base else "$base $context"
+    }
+
+    /** 为本地房间详情动作附加来源玩法与分组，远端房间保持代理加入语义。 */
+    private fun roomInfoAction(row: RoomMenuRow, gameId: String?, group: String?): String {
+        if (gameId == null || !row.infoAction.startsWith("kgc:open-room ")) return row.infoAction
+        return listOfNotNull(row.infoAction, gameId, group).joinToString(" ")
+    }
+
+    /** 规范化选择器分组；参考 default 分组表示不限制竞技场。 */
+    private fun normalizeSelectorGroup(group: String?): String? {
+        return group?.trim()?.lowercase()?.takeIf { it.isNotBlank() && it != "default" }
+    }
+
+    /** 仅将旧模板中未自定义的单一默认动作替换为带筛选上下文的新动作。 */
+    private fun replaceLegacyMenuAction(
+        config: YamlConfiguration,
+        path: String,
+        legacyAction: String,
+        contextualAction: String
+    ) {
+        if (legacyAction == contextualAction || config.getStringList(path) != listOf(legacyAction)) return
+        config.set(path, listOf(contextualAction))
     }
 
     private fun VelocityRoomSnapshot.toRoomMenuRow(localServerId: String): RoomMenuRow {
@@ -1038,6 +1392,9 @@ class GameCenterMenuService(
             serverId = serverId,
             roomId = roomId,
             roomName = roomName,
+            moduleId = tags.firstOrNull { it.startsWith("module:") }?.substringAfter("module:")
+                ?: gameId.substringBefore(':'),
+            group = tags.firstOrNull { it.startsWith("group:") }?.substringAfter("group:") ?: "default",
             gameId = gameId,
             gameName = gameName,
             mapId = mapId,
@@ -1058,6 +1415,8 @@ class GameCenterMenuService(
             serverId = localServerId,
             roomId = id,
             roomName = name,
+            moduleId = module.id,
+            group = configuredGame?.selectorGroup ?: "default",
             gameId = definition?.id ?: module.id,
             gameName = module.displayName,
             mapId = configuredGame?.displayName ?: mapTemplate?.substringAfterLast('/') ?: "-",
@@ -1076,6 +1435,8 @@ class GameCenterMenuService(
         val serverId: String,
         val roomId: String,
         val roomName: String,
+        val moduleId: String,
+        val group: String,
         val gameId: String,
         val gameName: String,
         val mapId: String,
@@ -1096,6 +1457,7 @@ class GameCenterMenuService(
             "game.id" to game.globalId,
             "game.local_id" to game.localId,
             "game.module_id" to game.moduleId,
+            "game.selector_group" to game.selectorGroup,
             "game.module_name" to moduleDisplayName(game.moduleId),
             "game.name" to game.displayName,
             "game.enabled" to game.enabled.toString(),
@@ -1116,18 +1478,27 @@ class GameCenterMenuService(
         return output
     }
 
-    private fun YamlConfiguration.renderRoomMembers(room: GameRoom, teams: List<GameTeam>) {
+    private fun YamlConfiguration.renderRoomMembers(
+        room: GameRoom,
+        teams: List<GameTeam>,
+        roomsGameId: String?,
+        roomsGroup: String?
+    ) {
         if (teams.isEmpty()) {
-            renderSoloMembers(room)
+            renderSoloMembers(room, roomsGameId, roomsGroup)
         } else {
-            renderTeamMembers(room, teams)
+            renderTeamMembers(room, teams, roomsGameId, roomsGroup)
         }
     }
 
-    private fun YamlConfiguration.renderSoloMembers(room: GameRoom) {
+    private fun YamlConfiguration.renderSoloMembers(room: GameRoom, roomsGameId: String?, roomsGroup: String?) {
         val players = room.players.toList()
         if (players.isEmpty()) {
-            button("member_empty", languageManager.getMessage("menu.member_empty"), "kgc:open-room ${room.id}")
+            button(
+                "member_empty",
+                languageManager.getMessage("menu.member_empty"),
+                roomDetailAction(room.id, roomsGameId, roomsGroup)
+            )
             return
         }
 
@@ -1135,13 +1506,18 @@ class GameCenterMenuService(
             button(
                 "member_$index",
                 languageManager.getMessage("menu.member_button", playerName(playerId)),
-                "kgc:open-room ${room.id}",
+                roomDetailAction(room.id, roomsGameId, roomsGroup),
                 listOf(languageManager.getMessage("menu.member_tooltip", playerId))
             )
         }
     }
 
-    private fun YamlConfiguration.renderTeamMembers(room: GameRoom, teams: List<GameTeam>) {
+    private fun YamlConfiguration.renderTeamMembers(
+        room: GameRoom,
+        teams: List<GameTeam>,
+        roomsGameId: String?,
+        roomsGroup: String?
+    ) {
         teams.forEachIndexed { index, team ->
             button(
                 "team_header_$index",
@@ -1155,12 +1531,16 @@ class GameCenterMenuService(
             teams.forEachIndexed { teamIndex, team ->
                 val member = teamService.getMembers(room.id, team.id).toList().getOrNull(row)
                 if (member == null) {
-                    button("team_${teamIndex}_empty_$row", languageManager.getMessage("menu.team_empty_slot"), "kgc:open-room ${room.id}")
+                    button(
+                        "team_${teamIndex}_empty_$row",
+                        languageManager.getMessage("menu.team_empty_slot"),
+                        roomDetailAction(room.id, roomsGameId, roomsGroup)
+                    )
                 } else {
                     button(
                         "team_${teamIndex}_member_$row",
                         languageManager.getMessage("menu.member_button", playerName(member)),
-                        "kgc:open-member ${room.id} $member",
+                        memberAction(room.id, member, roomsGameId, roomsGroup),
                         listOf(languageManager.getMessage("menu.member_tooltip", member))
                     )
                 }
@@ -1173,7 +1553,7 @@ class GameCenterMenuService(
                 button(
                     "team_ungrouped_$index",
                     languageManager.getMessage("menu.member_ungrouped", playerName(playerId)),
-                    "kgc:open-member ${room.id} $playerId",
+                    memberAction(room.id, playerId, roomsGameId, roomsGroup),
                     listOf(languageManager.getMessage("menu.member_tooltip", playerId))
                 )
             }

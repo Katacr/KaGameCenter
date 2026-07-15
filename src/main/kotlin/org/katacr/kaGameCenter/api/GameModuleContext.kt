@@ -10,6 +10,8 @@ import org.katacr.kaGameCenter.chat.GameChatFormatter
 import org.katacr.kaGameCenter.chat.GameChatService
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
 import org.katacr.kaGameCenter.editor.MapEditorService
+import org.katacr.kaGameCenter.editor.EditorPointCaptureService
+import org.katacr.kaGameCenter.elimination.PlayerEliminationService
 import org.katacr.kaGameCenter.entity.RoomEntityOwnershipService
 import org.katacr.kaGameCenter.game.GameModule
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
@@ -18,12 +20,17 @@ import org.katacr.kaGameCenter.game.GameRoomManager
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.menu.chest.ChestMenuDataSource
 import org.katacr.kaGameCenter.menu.chest.ChestMenuService
+import org.katacr.kaGameCenter.map.ManagedMapPointService
+import org.katacr.kaGameCenter.nametag.PlayerNametagService
 import org.katacr.kaGameCenter.packet.PacketDispatchService
 import org.katacr.kaGameCenter.result.GameResultService
 import org.katacr.kaGameCenter.runtime.PlayerRuntimeStateService
+import org.katacr.kaGameCenter.resource.RoomResourceScopeService
 import org.katacr.kaGameCenter.selection.SelectionService
 import org.katacr.kaGameCenter.team.GameTeamService
 import org.katacr.kaGameCenter.team.TeamAssignmentService
+import org.katacr.kaGameCenter.spawn.SpawnAssignmentService
+import org.katacr.kaGameCenter.spectator.SpectatorService
 import org.katacr.kaGameCenter.task.RoomTaskService
 import org.katacr.kaGameCenter.world.TemporaryWorldService
 import java.io.File
@@ -38,6 +45,7 @@ class GameModuleContext(
     val languageManager: LanguageManager,
     val packetService: PacketDispatchService,
     val selectionService: SelectionService,
+    val editorPointCaptureService: EditorPointCaptureService,
     val teamService: GameTeamService,
     val teamAssignmentService: TeamAssignmentService,
     val chatService: GameChatService,
@@ -50,14 +58,25 @@ class GameModuleContext(
     val resultService: GameResultService,
     val playerRuntimeStateService: PlayerRuntimeStateService,
     val roomBroadcastService: RoomBroadcastService,
+    val nametagService: PlayerNametagService,
+    val eliminationService: PlayerEliminationService,
+    val spectatorService: SpectatorService,
+    val roomResourceScopeService: RoomResourceScopeService,
+    val managedMapPointService: ManagedMapPointService,
+    val spawnAssignmentService: SpawnAssignmentService,
     private val moduleAdminRegistry: MutableMap<String, ModuleAdminCommand>
 ) {
+    private val modules = mutableListOf<GameModule>()
     private val listeners = mutableListOf<Listener>()
     private val tasks = mutableListOf<BukkitTask>()
-    private val chestMenuDataSourceTypes = mutableListOf<String>()
+    private val adminCommands = mutableListOf<ModuleAdminCommand>()
+    private val gameEditors = mutableListOf<ModuleGameEditor>()
+    private val chatFormatters = mutableListOf<GameChatFormatter>()
+    private val chestMenuDataSources = mutableListOf<Pair<String, ChestMenuDataSource>>()
 
     fun registerModule(module: GameModule) {
         api.registerModule(module)
+        modules.add(module)
     }
 
     fun registerListener(listener: Listener) {
@@ -67,20 +86,23 @@ class GameModuleContext(
 
     fun registerAdminCommand(command: ModuleAdminCommand) {
         moduleAdminRegistry[command.name.lowercase()] = command
+        adminCommands.add(command)
     }
 
     fun registerGameEditor(editor: ModuleGameEditor) {
         managedGameCatalog.registerEditor(editor)
+        gameEditors.add(editor)
     }
 
     fun registerChatFormatter(formatter: GameChatFormatter) {
         chatService.registerFormatter(id, formatter)
+        chatFormatters.add(formatter)
     }
 
     fun registerChestMenuDataSource(type: String, source: ChestMenuDataSource) {
         val namespacedType = "$id:$type"
         chestMenuService.dataSources.register(namespacedType, source)
-        chestMenuDataSourceTypes.add(namespacedType)
+        chestMenuDataSources.add(namespacedType to source)
     }
 
     fun trackTask(task: BukkitTask): BukkitTask {
@@ -93,6 +115,7 @@ class GameModuleContext(
     }
 
     fun cleanup() {
+        editorPointCaptureService.cancelOwner(id)
         tasks.forEach { task ->
             if (!task.isCancelled) {
                 task.cancel()
@@ -101,9 +124,19 @@ class GameModuleContext(
         tasks.clear()
         listeners.forEach { HandlerList.unregisterAll(it) }
         listeners.clear()
-        chatService.unregisterFormatter(id)
-        chestMenuDataSourceTypes.forEach { chestMenuService.dataSources.unregister(it) }
-        chestMenuDataSourceTypes.clear()
-        moduleAdminRegistry.entries.removeIf { it.value.name.equals(id, ignoreCase = true) }
+        chatFormatters.asReversed().forEach { formatter -> chatService.unregisterFormatter(id, formatter) }
+        chatFormatters.clear()
+        chestMenuDataSources.asReversed().forEach { (type, source) ->
+            chestMenuService.dataSources.unregister(type, source)
+        }
+        chestMenuDataSources.clear()
+        adminCommands.asReversed().forEach { command ->
+            moduleAdminRegistry.entries.removeIf { it.value === command }
+        }
+        adminCommands.clear()
+        gameEditors.asReversed().forEach(managedGameCatalog::unregisterEditor)
+        gameEditors.clear()
+        modules.asReversed().forEach(api::unregisterModule)
+        modules.clear()
     }
 }

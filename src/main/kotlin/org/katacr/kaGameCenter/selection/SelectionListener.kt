@@ -19,24 +19,30 @@ class SelectionListener(
         if (!player.hasPermission("kagamecenter.admin")) return
         if (event.item?.type != Material.STONE_AXE) return
 
-        val clickedBlock = event.clickedBlock ?: return
         val action = event.action
-        if (action != Action.LEFT_CLICK_BLOCK && action != Action.RIGHT_CLICK_BLOCK) return
+        val isFirst = action == Action.LEFT_CLICK_BLOCK || action == Action.LEFT_CLICK_AIR
+        val isSecond = action == Action.RIGHT_CLICK_BLOCK || action == Action.RIGHT_CLICK_AIR
+        if (!isFirst && !isSecond) return
 
         event.isCancelled = true
-        val selection = if (action == Action.LEFT_CLICK_BLOCK) {
-            selectionService.setFirst(player, clickedBlock.location)
-        } else {
-            selectionService.setSecond(player, clickedBlock.location)
+        val location = event.clickedBlock?.location ?: player.location.clone().apply {
+            x = blockX.toDouble()
+            y = blockY.toDouble()
+            z = blockZ.toDouble()
         }
-        val point = if (action == Action.LEFT_CLICK_BLOCK) "pos1" else "pos2"
+        val selection = if (isFirst) {
+            selectionService.setFirst(player, location)
+        } else {
+            selectionService.setSecond(player, location)
+        }
+        val point = if (isFirst) "pos1" else "pos2"
         player.sendMessage(Component.text(languageManager.getMessage(
             "selection.point_set",
             point,
-            clickedBlock.world.name,
-            clickedBlock.x,
-            clickedBlock.y,
-            clickedBlock.z
+            location.world?.name ?: "-",
+            location.blockX,
+            location.blockY,
+            location.blockZ
         )))
         if (selection != null) {
             player.sendMessage(Component.text(languageManager.getMessage(

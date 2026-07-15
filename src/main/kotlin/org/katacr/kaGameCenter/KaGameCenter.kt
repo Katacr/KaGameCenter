@@ -19,6 +19,8 @@ import org.katacr.kaGameCenter.dialog.GameCenterDialogService
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
 import org.katacr.kaGameCenter.display.GameDisplayService
 import org.katacr.kaGameCenter.editor.MapEditorService
+import org.katacr.kaGameCenter.editor.EditorPointCaptureService
+import org.katacr.kaGameCenter.elimination.PlayerEliminationService
 import org.katacr.kaGameCenter.entity.RoomEntityOwnershipService
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.GameRegistry
@@ -27,16 +29,20 @@ import org.katacr.kaGameCenter.game.GameMapManager
 import org.katacr.kaGameCenter.game.GameRoomManager
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.listener.GamePlayerListener
+import org.katacr.kaGameCenter.map.ManagedMapPointService
 import org.katacr.kaGameCenter.menu.chest.ChestMenuListener
 import org.katacr.kaGameCenter.menu.chest.ChestMenuService
 import org.katacr.kaGameCenter.module.ManagedGameModuleService
+import org.katacr.kaGameCenter.nametag.PlayerNametagService
 import org.katacr.kaGameCenter.packet.PacketDispatchService
 import org.katacr.kaGameCenter.packet.PacketEventsDispatchService
 import org.katacr.kaGameCenter.result.GameResultService
 import org.katacr.kaGameCenter.runtime.PlayerRuntimeStateService
+import org.katacr.kaGameCenter.resource.RoomResourceScopeService
 import org.katacr.kaGameCenter.selection.SelectionListener
 import org.katacr.kaGameCenter.selection.SelectionService
 import org.katacr.kaGameCenter.spectator.SpectatorService
+import org.katacr.kaGameCenter.spawn.SpawnAssignmentService
 import org.katacr.kaGameCenter.team.GameTeamService
 import org.katacr.kaGameCenter.team.TeamAssignmentService
 import org.katacr.kaGameCenter.task.RoomTaskService
@@ -66,6 +72,7 @@ class KaGameCenter : JavaPlugin() {
     private lateinit var spectatorService: SpectatorService
     private lateinit var packetService: PacketDispatchService
     private lateinit var selectionService: SelectionService
+    private lateinit var editorPointCaptureService: EditorPointCaptureService
     private lateinit var mapEditorService: MapEditorService
     private lateinit var managedGameCatalog: ManagedGameCatalogService
     private lateinit var gameCenterApi: GameCenterApi
@@ -78,6 +85,11 @@ class KaGameCenter : JavaPlugin() {
     private lateinit var resultService: GameResultService
     private lateinit var playerRuntimeStateService: PlayerRuntimeStateService
     private lateinit var roomBroadcastService: RoomBroadcastService
+    private lateinit var nametagService: PlayerNametagService
+    private lateinit var eliminationService: PlayerEliminationService
+    private lateinit var roomResourceScopeService: RoomResourceScopeService
+    private lateinit var managedMapPointService: ManagedMapPointService
+    private lateinit var spawnAssignmentService: SpawnAssignmentService
     private val moduleAdminCommands = linkedMapOf<String, ModuleAdminCommand>()
 
     companion object {
@@ -154,7 +166,9 @@ class KaGameCenter : JavaPlugin() {
         teamAssignmentService = TeamAssignmentService(teamService)
         packetService = PacketEventsDispatchService(this)
         packetService.init()
+        nametagService = PlayerNametagService(packetService)
         selectionService = SelectionService()
+        editorPointCaptureService = EditorPointCaptureService(this, languageManager)
         spectatorService = SpectatorService(this, languageManager)
         displayService = GameDisplayService(this, languageManager, teamService)
         gameManager = GameManager(this)
@@ -169,18 +183,65 @@ class KaGameCenter : JavaPlugin() {
         mapEditorService = MapEditorService(temporaryWorldService)
         roomTaskService = RoomTaskService(this)
         entityOwnershipService = RoomEntityOwnershipService()
+        eliminationService = PlayerEliminationService(roomTaskService, spectatorService)
+        roomResourceScopeService = RoomResourceScopeService(roomTaskService, entityOwnershipService, packetService, nametagService)
+        managedMapPointService = ManagedMapPointService()
+        spawnAssignmentService = SpawnAssignmentService()
         playerRuntimeStateService = PlayerRuntimeStateService()
         roomBroadcastService = RoomBroadcastService()
         statsService = createStatsService()
         resultService = GameResultService(statsService)
-        snapshotService = PlayerSnapshotService()
+        snapshotService = PlayerSnapshotService(this)
         velocityBridgeService = createVelocityBridgeService()
-        roomManager = GameRoomManager(this, registry, gameManager, managedGameCatalog, temporaryWorldService, statsService, snapshotService, displayService, spectatorService, languageManager, teamService, velocityBridgeService)
+        roomManager = GameRoomManager(
+            this,
+            registry,
+            gameManager,
+            managedGameCatalog,
+            temporaryWorldService,
+            statsService,
+            snapshotService,
+            displayService,
+            spectatorService,
+            languageManager,
+            teamService,
+            velocityBridgeService,
+            nametagService,
+            eliminationService,
+            roomResourceScopeService
+        )
         chatService = GameChatService(this, roomManager, teamService, languageManager)
         menuService = GameCenterMenuService(this, dialogService, roomManager, gameMapManager, teamService, languageManager, managedGameCatalog, velocityBridgeService)
         chestMenuService = ChestMenuService(this, menuService)
         menuService.bindChestMenuService(chestMenuService)
-        gameCenterApi = GameCenterApi(registry, roomManager, temporaryWorldService, languageManager, packetService, selectionService, teamService, teamAssignmentService, chatService, mapEditorService, managedGameCatalog, menuService, chestMenuService, roomTaskService, entityOwnershipService, resultService, playerRuntimeStateService, roomBroadcastService)
+        gameCenterApi = GameCenterApi(
+            registry,
+            roomManager,
+            temporaryWorldService,
+            languageManager,
+            packetService,
+            selectionService,
+            editorPointCaptureService,
+            teamService,
+            teamAssignmentService,
+            chatService,
+            mapEditorService,
+            managedGameCatalog,
+            menuService,
+            chestMenuService,
+            roomTaskService,
+            entityOwnershipService,
+            resultService,
+            playerRuntimeStateService,
+            roomBroadcastService,
+            nametagService,
+            eliminationService,
+            spectatorService,
+            roomResourceScopeService,
+            managedMapPointService,
+            spawnAssignmentService,
+            velocityBridgeService
+        )
         moduleService = ManagedGameModuleService(this, gameCenterApi, roomManager, temporaryWorldService, languageManager, packetService, selectionService, mapEditorService, managedGameCatalog, menuService, moduleAdminCommands)
 
         gameManager.load()
@@ -193,8 +254,20 @@ class KaGameCenter : JavaPlugin() {
         menuService.init()
         chestMenuService.init()
 
-        server.pluginManager.registerEvents(GamePlayerListener(roomManager, menuService, packetService, spectatorService, velocityBridgeService), this)
+        server.pluginManager.registerEvents(
+            GamePlayerListener(
+                roomManager,
+                menuService,
+                packetService,
+                spectatorService,
+                velocityBridgeService,
+                nametagService,
+                eliminationService
+            ),
+            this
+        )
         server.pluginManager.registerEvents(SelectionListener(selectionService, languageManager), this)
+        server.pluginManager.registerEvents(editorPointCaptureService, this)
         server.pluginManager.registerEvents(GameChatListener(this, chatService), this)
         server.pluginManager.registerEvents(ChestMenuListener(chestMenuService), this)
 
@@ -218,8 +291,17 @@ class KaGameCenter : JavaPlugin() {
         if (::roomManager.isInitialized) {
             roomManager.stop()
         }
+        if (::roomResourceScopeService.isInitialized) {
+            roomResourceScopeService.closeAll()
+        }
+        if (::eliminationService.isInitialized) {
+            eliminationService.clearAll()
+        }
         if (::moduleService.isInitialized) {
             moduleService.unload()
+        }
+        if (::editorPointCaptureService.isInitialized) {
+            editorPointCaptureService.clearAll()
         }
         if (::roomTaskService.isInitialized) {
             roomTaskService.cancelAll()
@@ -235,6 +317,9 @@ class KaGameCenter : JavaPlugin() {
         }
         if (::displayService.isInitialized) {
             displayService.clearAll()
+        }
+        if (::nametagService.isInitialized) {
+            nametagService.clearAll()
         }
         if (::packetService.isInitialized) {
             packetService.shutdown()

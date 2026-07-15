@@ -1,0 +1,488 @@
+id: bedwars
+name: "起床战争"
+enabled: false
+main: jar
+jar: "../bedwars.jar"
+entrypoint: "org.katacr.kagamecenter.bedwars.BedWarsModuleProvider"
+description: "KaGameCenter BedWars module (development preview)."
+
+game:
+  display-name: "起床战争"
+  min-players: 2
+  max-players: 16
+  sounds:
+    join-allowed: { sound: ENTITY_SLIME_JUMP, volume: 1.0, pitch: 1.0 }
+    join-denied: { sound: ENTITY_VILLAGER_NO, volume: 1.0, pitch: 1.0 }
+    rejoin-allowed: { sound: ENTITY_SLIME_JUMP, volume: 1.0, pitch: 1.0 }
+    rejoin-denied: { sound: ENTITY_VILLAGER_NO, volume: 1.0, pitch: 1.0 }
+    spectate-allowed: { sound: ENTITY_SLIME_JUMP, volume: 1.0, pitch: 1.0 }
+    spectate-denied: { sound: ENTITY_VILLAGER_NO, volume: 1.0, pitch: 1.0 }
+    spectator-target-click: { sound: ENTITY_SLIME_JUMP, volume: 1.0, pitch: 1.0 }
+    arena-selector-open: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+    stats-menu-open: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+    countdown: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+    countdown-final:
+      4: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+      3: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+      2: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+      1: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+    start: { sound: BLOCK_SLIME_BLOCK_FALL, volume: 1.0, pitch: 1.0 }
+    respawn: { sound: BLOCK_SLIME_BLOCK_FALL, volume: 1.0, pitch: 1.0 }
+    kill: { sound: ENTITY_EXPERIENCE_ORB_PICKUP, volume: 1.0, pitch: 1.0 }
+    bed-destroyed: { sound: ENTITY_ENDER_DRAGON_GROWL, volume: 1.0, pitch: 1.0 }
+    own-bed-destroyed: { sound: ENTITY_WITHER_DEATH, volume: 1.0, pitch: 1.0 }
+    all-beds-destroyed: { sound: ENTITY_ENDER_DRAGON_GROWL, volume: 1.0, pitch: 1.0 }
+    sudden-death: { sound: ENTITY_ENDER_DRAGON_FLAP, volume: 1.0, pitch: 1.0 }
+    end: { sound: ITEM_TRIDENT_THUNDER, volume: 1.0, pitch: 1.0 }
+  allowed-commands:
+    - kagamecenter
+    - kgc
+    - allchat
+    - a
+    - globalchat
+    - g
+  default-item-groups:
+    default:
+      - WOODEN_SWORD
+  respawn-seconds: 5
+  respawn-invulnerability-seconds: 4
+  reconnect-grace-seconds: 300
+  afk-seconds: 45
+  close-delay-seconds: 5
+  void-y: -64.0
+  world-border-size: 300
+  win-points: 3
+  max-build-y: 180
+  island-radius: 17.0
+  disable-empty-team-generators: false
+  disable-empty-team-npcs: true
+  use-bed-hologram: true
+  vanilla-death-drops: false
+  mark-leave-as-abandon: false
+
+seasonal:
+  halloween:
+    # 参考 Europe/Rome 时区的 10 月 22 日至 11 月 1 日活动窗口。
+    enabled: true
+
+pre-game-items:
+  stats:
+    material: PLAYER_HEAD
+    slot: 0
+    enchanted: false
+    command: "kagamecenter stats bedwars"
+  leave:
+    material: RED_BED
+    slot: 8
+    enchanted: false
+    command: "kagamecenter leave"
+
+spectator-items:
+  teleporter:
+    material: PLAYER_HEAD
+    slot: 0
+    enchanted: false
+    action: FOLLOW
+  menu:
+    material: NETHER_STAR
+    slot: 4
+    enchanted: false
+    action: MENU
+  leave:
+    material: RED_BED
+    slot: 8
+    enchanted: false
+    action: LEAVE
+
+levels:
+  enabled: true
+  rankup-costs: [1000, 2000, 3000, 3500]
+  default-rankup-cost: 5000
+  progress-bar:
+    symbol: "■"
+    unlocked-color: "&b"
+    locked-color: "&7"
+    format: "&8 [{progress}&8]"
+  rewards:
+    per-minute: 10
+    per-teammate: 5
+    game-win: 100
+    bed-destroyed: 15
+    regular-kill: 10
+    final-kill: 15
+
+money-rewards:
+  per-minute: 5
+  per-teammate: 30
+  game-win: 90
+  bed-destroyed: 60
+  regular-kill: 10
+  final-kill: 40
+
+countdowns:
+  game-start-regular: 40
+  game-start-half-arena: 25
+  game-start-shortened: 5
+  game-restart: 45
+  beds-destroy: 360
+  dragon-spawn: 600
+  game-end: 120
+
+lobby-settings:
+  void-tp: true
+  void-height: 0.0
+
+chat:
+  format: true
+  shout-cooldown-seconds: 30
+
+allow-hunger-depletion:
+  waiting: false
+  ingame: false
+
+performance-settings:
+  rotate-generators: true
+
+game-end:
+  chat-top:
+    order-by: KILLS
+    hide-missing: true
+  sb-top:
+    order-by: KILLS
+    hide-missing: true
+
+scoreboard-settings:
+  placeholders:
+    server-ip: ""
+    powered-by: "KaGameCenter"
+  sidebar:
+    enable-lobby-sidebar: true
+    enable-game-sidebar: true
+    title-refresh-interval: 4
+    placeholders-refresh-interval: 20
+  tab-header-footer:
+    enable: true
+    refresh-interval: 10
+  player-list:
+    format-waiting-list: false
+    format-starting-list: false
+    format-playing-list: true
+    format-restarting-list: true
+    names-refresh-interval: 1200
+  health:
+    enable: true
+    display-in-tab: true
+    animation-refresh-interval: 300
+
+blocks:
+  place-allowed:
+    - WHITE_WOOL
+    - RED_WOOL
+    - BLUE_WOOL
+    - GREEN_WOOL
+    - YELLOW_WOOL
+    - CYAN_WOOL
+    - PINK_WOOL
+    - GRAY_WOOL
+    - OAK_PLANKS
+    - ORANGE_TERRACOTTA
+    - END_STONE
+    - GLASS
+    - LADDER
+    - OBSIDIAN
+    - SPONGE
+    - TNT
+  breakable-map-blocks:
+    - SHORT_GRASS
+    - TALL_GRASS
+    - FERN
+    - LARGE_FERN
+    - SEAGRASS
+    - TALL_SEAGRASS
+    - SUGAR_CANE
+    - SUNFLOWER
+    - LILAC
+    - ROSE_BUSH
+    - PEONY
+    - DIRT_PATH
+  allow-fire-extinguish: true
+  auto-prime-tnt: true
+  tnt-fuse-ticks: 45
+  blast-proof-glass-blocks-rays: true
+  spawn-protection-radius: 2.0
+  shop-protection-radius: 1.0
+  generator-protection-radius: 1.0
+  team-chest-radius: 17.0
+
+inventories:
+  disable-crafting-table: true
+  disable-enchanting-table: true
+  disable-furnace: true
+  disable-brewing-stand: true
+  disable-anvil: true
+
+generators:
+  holograms:
+    enabled: true
+  stack-items: false
+  team-split:
+    enabled: true
+    radius: 1.0
+  sounds:
+    diamond-upgrade: { sound: ENTITY_PLAYER_LEVELUP, volume: 1.0, pitch: 1.0 }
+    emerald-upgrade: { sound: ENTITY_GHAST_WARN, volume: 1.0, pitch: 1.0 }
+  iron:
+    amount: 2
+    spawn-limit: 32
+  gold:
+    amount: 2
+    spawn-limit: 7
+  diamond:
+    tiers:
+      1: { start-seconds: 0, interval-ticks: 600, amount: 1, spawn-limit: 4 }
+      2: { start-seconds: 360, interval-ticks: 400, amount: 1, spawn-limit: 6 }
+      3: { start-seconds: 1080, interval-ticks: 300, amount: 1, spawn-limit: 8 }
+  emerald:
+    tiers:
+      1: { start-seconds: 0, interval-ticks: 1400, amount: 1, spawn-limit: 4 }
+      2: { start-seconds: 720, interval-ticks: 1000, amount: 1, spawn-limit: 6 }
+      3: { start-seconds: 1440, interval-ticks: 600, amount: 1, spawn-limit: 8 }
+  forge:
+    speed-multipliers: [0.6667, 0.5, 0.5, 0.3333]
+    emerald-interval-ticks: 200
+    tier-3-emerald-amount: 1
+    tier-4-emerald-amount: 2
+    emerald-spawn-limit: 4
+
+dragons:
+  base-count: 1
+  buff-extra-count: 1
+  spawn-height: 16.0
+  health: 100.0
+  damage: 6.0
+  speed: 0.8
+  attack-radius: 4.5
+
+shop:
+  holograms:
+    enabled: true
+  # 对应参考 category-traps；名称、说明和子页标题从模块语言读取。
+  trap-category:
+    icon: LEATHER
+    amount: 1
+    enchanted: false
+    # 参考 category-content；逗号后的槽号仅用于兼容，实际子页使用分页布局。
+    menu-content:
+      - "base-trap-1,10"
+      - "base-trap-2,11"
+      - "base-trap-3,12"
+      - "base-trap-4,13"
+      - "separator-back,31"
+  # 对应参考 separator-glass；15–16 个队列槽时为保留完整队列自动隐藏。
+  upgrade-separator:
+    icon: GRAY_STAINED_GLASS_PANE
+    amount: 1
+    enchanted: false
+    # 支持 player/console 及 as-player/as-console；命令可用 {playername}/{player}/{team}。
+    on-click: { player: [], console: [] }
+  sounds:
+    bought: { sound: ENTITY_VILLAGER_YES, volume: 1.0, pitch: 1.0 }
+    insufficient: { sound: ENTITY_VILLAGER_NO, volume: 1.0, pitch: 1.0 }
+    auto-equip: { sound: ITEM_ARMOR_EQUIP_GENERIC, volume: 1.0, pitch: 1.0 }
+    trap-trigger: { sound: ENTITY_ENDERMAN_TELEPORT, volume: 1.0, pitch: 1.0 }
+  heal-pool:
+    particles:
+      enabled: true
+      seen-by-team-only: true
+  traps:
+    blindness: { duration-seconds: 5, amplifier: 1 }
+    counter-offensive: { duration-seconds: 15, amplifier: 1 }
+    alarm: { glowing-seconds: 0 }
+    miner-fatigue: { duration-seconds: 15, amplifier: 1 }
+  tools:
+    pickaxe-efficiency-levels: [0, 2, 3, 3]
+    pickaxe-sharpness-levels: [0, 0, 2, 0]
+    axe-efficiency-levels: [1, 1, 2, 3]
+  max-queued-traps: 3
+  # 参考 cost: 0 使用此起价和货币并按队列递增；正数 cost 固定。现有 price 默认动态，可设 dynamic-price: false 固定。
+  trap-start-price: 1
+  trap-currency: DIAMOND
+  trap-price-increment: 1
+  # 按托管玩法 selector-group 覆盖；兼容根级 <group>-upgrades-settings 的参考字段名。
+  # 组内 menu-content 可替换 upgrade-menu-content；示例：group-settings: { solo: { max-queued-traps: 2, menu-content: ["upgrade-swords,10", "category-traps,16"] } }
+  group-settings: {}
+  # 对应参考 default/group-upgrades-settings.menu-content；槽号只用于识别组件，实际位置由 KaGameCenter 自适应布局。
+  upgrade-menu-content:
+    - "upgrade-swords,10"
+    - "upgrade-armor,11"
+    - "upgrade-miner,12"
+    - "upgrade-forge,13"
+    - "upgrade-heal-pool,14"
+    - "upgrade-dragon,15"
+    - "category-traps,16"
+    - "separator-glass,18,19,20,21,22,23,24,25,26"
+    - "trap-slot-first,30"
+    - "trap-slot-second,31"
+    - "trap-slot-third,32"
+  quick-buy-defaults:
+    - _
+    - _
+    - _
+    - _
+    - _
+    - _
+    - _
+    - wool
+    - stone-sword
+    - chain-armor
+    - _
+    - bow
+    - speed-potion
+    - tnt
+    - planks
+    - iron-sword
+    - iron-armor
+    - shears
+    - arrows
+    - jump-potion
+    - water-bucket
+  items:
+    # currency 支持 Bukkit 材料名，也可填 vault/economy 使用可选 Vault 账户余额。
+    # 可选 buy-cmds.as-player/as-console 在支付后执行；仅命令商品可省略 item，但仍需 icon 和 type。
+    # 显式 buy-items 可用命名映射或列表一次发放多个物品；子项支持 material/amount/name/enchants/potion/potion-color/auto-equip/unbreakable。
+    # 顶层或 buy-items 的 name/item-name 会按参考先重置样式，并解析 & 或 § 旧式颜色。
+    # 预览图标支持 icon-amount/tier-item-amount、icon-enchanted/enchanted、potion-display 和 icon-potion-color；与实际发货字段独立。
+    # display-lore/item-lore/lore 支持列表或多行文本，以及 {tier}/{color}/{cost}/{currency}/{buy_status}/{quick_buy} 参考占位符。
+    # 床、任意颜色羊毛、玻璃、染色玻璃板和陶瓦会统一转换为购买者队色；放置白名单按同类材质兼容重染结果。
+    # 配置 buy-items 后不再发放顶层 item；顶层同时兼容参考字段 material/name/enchants 与既有 item/item-name/enchantments。
+    # POTION 商品的 potion 使用“效果 秒数 Bukkit等级”并可逗号分隔；potion-color 接受十进制或 #RRGGBB。
+    # ITEM/POTION/SPECIAL 可用 permanent 或 is-permanent 防重复并在复活时重发；护甲 item 可用 auto-equip。
+    # 可选 category/category-id 与 weight/category-weight：同分类买过较高权重后禁止购买较低权重，状态在当前对局和重连间保留。
+    - { id: wool, display-name: "羊毛 x16", icon: WHITE_WOOL, type: ITEM, item: WHITE_WOOL, amount: 16, currency: IRON_INGOT, price: 4, tier: 0 }
+    - { id: clay, display-name: "陶瓦 x16", icon: ORANGE_TERRACOTTA, type: ITEM, item: ORANGE_TERRACOTTA, amount: 16, currency: IRON_INGOT, price: 12, tier: 0 }
+    - { id: planks, display-name: "木板 x16", icon: OAK_PLANKS, type: ITEM, item: OAK_PLANKS, amount: 16, currency: GOLD_INGOT, price: 4, tier: 0 }
+    - { id: end-stone, display-name: "末地石 x16", icon: END_STONE, type: ITEM, item: END_STONE, amount: 16, currency: IRON_INGOT, price: 24, tier: 0 }
+    - { id: glass, display-name: "防爆玻璃 x4", icon: GLASS, type: ITEM, item: GLASS, amount: 4, currency: IRON_INGOT, price: 12, tier: 0 }
+    - { id: ladder, display-name: "梯子 x16", icon: LADDER, type: ITEM, item: LADDER, amount: 16, currency: IRON_INGOT, price: 4, tier: 0 }
+    - { id: obsidian, display-name: "黑曜石 x4", icon: OBSIDIAN, type: ITEM, item: OBSIDIAN, amount: 4, currency: EMERALD, price: 4, tier: 0 }
+    - { id: tnt, display-name: "TNT", icon: TNT, type: ITEM, item: TNT, amount: 1, currency: GOLD_INGOT, price: 4, tier: 0 }
+    - { id: stone-sword, display-name: "石剑", icon: STONE_SWORD, type: ITEM, item: STONE_SWORD, amount: 1, currency: IRON_INGOT, price: 10, tier: 0 }
+    - { id: iron-sword, display-name: "铁剑", icon: IRON_SWORD, type: ITEM, item: IRON_SWORD, amount: 1, currency: GOLD_INGOT, price: 7, tier: 0 }
+    - { id: diamond-sword, display-name: "钻石剑", icon: DIAMOND_SWORD, type: ITEM, item: DIAMOND_SWORD, amount: 1, currency: EMERALD, price: 4, tier: 0 }
+    - { id: knockback-stick, display-name: "击退棒", icon: STICK, type: ITEM, item: STICK, amount: 1, currency: GOLD_INGOT, price: 10, tier: 0 }
+    - { id: arrows, display-name: "箭 x8", icon: ARROW, type: ITEM, item: ARROW, amount: 8, currency: GOLD_INGOT, price: 2, tier: 0 }
+    - { id: bow, display-name: "弓", icon: BOW, type: ITEM, item: BOW, amount: 1, currency: GOLD_INGOT, price: 12, tier: 0 }
+    - { id: power-bow, display-name: "力量弓", icon: BOW, type: ITEM, item: BOW, amount: 1, currency: GOLD_INGOT, price: 24, tier: 0 }
+    - { id: punch-bow, display-name: "力量击退弓", icon: BOW, type: ITEM, item: BOW, amount: 1, currency: EMERALD, price: 6, tier: 0 }
+    - { id: speed-potion, display-name: "速度药水", icon: POTION, type: POTION, item: POTION, amount: 1, potion: "SPEED 45 1", potion-display: speed, currency: EMERALD, price: 1, tier: 0 }
+    - { id: jump-potion, display-name: "跳跃药水", icon: POTION, type: POTION, item: POTION, amount: 1, potion: "JUMP 45 4", potion-display: jump, currency: EMERALD, price: 1, tier: 0 }
+    - { id: invisibility-potion, display-name: "隐身药水", icon: POTION, type: POTION, item: POTION, amount: 1, potion: "INVISIBILITY 30 0", potion-display: invisibility, currency: EMERALD, price: 2, tier: 0 }
+    - { id: golden-apple, display-name: "金苹果", icon: GOLDEN_APPLE, type: ITEM, item: GOLDEN_APPLE, amount: 1, currency: GOLD_INGOT, price: 3, tier: 0 }
+    - { id: bed-bug, display-name: "床虫", icon: SNOWBALL, type: SPECIAL, item: SNOWBALL, amount: 1, currency: IRON_INGOT, price: 40, tier: 0 }
+    - { id: dream-defender, display-name: "梦境守卫", icon: IRON_GOLEM_SPAWN_EGG, type: SPECIAL, item: IRON_GOLEM_SPAWN_EGG, amount: 1, currency: IRON_INGOT, price: 120, tier: 0 }
+    - { id: fireball, display-name: "火球", icon: FIRE_CHARGE, type: SPECIAL, item: FIRE_CHARGE, amount: 1, currency: IRON_INGOT, price: 40, tier: 0 }
+    - { id: ender-pearl, display-name: "末影珍珠", icon: ENDER_PEARL, type: ITEM, item: ENDER_PEARL, amount: 1, currency: EMERALD, price: 4, tier: 0 }
+    - { id: water-bucket, display-name: "水桶", icon: WATER_BUCKET, type: ITEM, item: WATER_BUCKET, amount: 1, currency: GOLD_INGOT, price: 4, tier: 0 }
+    - { id: bridge-egg, display-name: "搭桥蛋", icon: EGG, type: SPECIAL, item: EGG, amount: 1, currency: EMERALD, price: 3, tier: 0 }
+    - { id: magic-milk, display-name: "魔法牛奶", icon: MILK_BUCKET, type: SPECIAL, item: MILK_BUCKET, amount: 1, currency: GOLD_INGOT, price: 4, tier: 0 }
+    - { id: sponge, display-name: "海绵", icon: SPONGE, type: ITEM, item: SPONGE, amount: 1, currency: GOLD_INGOT, price: 3, tier: 0 }
+    - { id: popup-tower, display-name: "袖珍弹出塔", icon: CHEST, type: SPECIAL, item: CHEST, amount: 1, currency: IRON_INGOT, price: 24, tier: 0 }
+    - { id: chain-armor, display-name: "锁链护甲", icon: CHAINMAIL_BOOTS, type: ARMOR, item: CHAINMAIL_BOOTS, amount: 1, currency: IRON_INGOT, price: 40, tier: 1, category: armor, weight: 1 }
+    - { id: iron-armor, display-name: "铁护甲", icon: IRON_BOOTS, type: ARMOR, item: IRON_BOOTS, amount: 1, currency: GOLD_INGOT, price: 12, tier: 2, category: armor, weight: 2 }
+    - { id: diamond-armor, display-name: "钻石护甲", icon: DIAMOND_BOOTS, type: ARMOR, item: DIAMOND_BOOTS, amount: 1, currency: EMERALD, price: 6, tier: 3, category: armor, weight: 3 }
+    # 镐和斧默认沿用参考配置：二阶以上死亡后降一级，一阶保留；设 downgradable/is-downgradable: false 可保留当前阶。
+    - { id: wood-pickaxe, display-name: "木镐", icon: WOODEN_PICKAXE, type: PICKAXE, item: WOODEN_PICKAXE, amount: 1, currency: IRON_INGOT, price: 10, tier: 1, downgradable: true }
+    - { id: iron-pickaxe, display-name: "铁镐", icon: IRON_PICKAXE, type: PICKAXE, item: IRON_PICKAXE, amount: 1, currency: IRON_INGOT, price: 10, tier: 2, downgradable: true }
+    - { id: gold-pickaxe, display-name: "金镐", icon: GOLDEN_PICKAXE, type: PICKAXE, item: GOLDEN_PICKAXE, amount: 1, currency: GOLD_INGOT, price: 3, tier: 3, downgradable: true }
+    - { id: diamond-pickaxe, display-name: "钻石镐", icon: DIAMOND_PICKAXE, type: PICKAXE, item: DIAMOND_PICKAXE, amount: 1, currency: GOLD_INGOT, price: 6, tier: 4, downgradable: true }
+    - { id: wood-axe, display-name: "木斧", icon: WOODEN_AXE, type: AXE, item: WOODEN_AXE, amount: 1, currency: IRON_INGOT, price: 10, tier: 1, downgradable: true }
+    - { id: iron-axe, display-name: "铁斧", icon: IRON_AXE, type: AXE, item: IRON_AXE, amount: 1, currency: IRON_INGOT, price: 10, tier: 2, downgradable: true }
+    - { id: gold-axe, display-name: "金斧", icon: GOLDEN_AXE, type: AXE, item: GOLDEN_AXE, amount: 1, currency: GOLD_INGOT, price: 3, tier: 3, downgradable: true }
+    - { id: diamond-axe, display-name: "钻石斧", icon: DIAMOND_AXE, type: AXE, item: DIAMOND_AXE, amount: 1, currency: GOLD_INGOT, price: 6, tier: 4, downgradable: true }
+    - { id: shears, display-name: "剪刀", icon: SHEARS, type: SHEARS, item: SHEARS, amount: 1, currency: IRON_INGOT, price: 20, tier: 1 }
+    # 内置万圣节商品平时保持禁用，活动开关开启且 Europe/Rome 日期在 10 月 22 日至 11 月 1 日时自动加入。
+    - { id: halloween-pumpkin, enabled: false, display-name: "万圣节南瓜 x12", item-name: "Happy Halloween!", icon: PUMPKIN, type: ITEM, item: PUMPKIN, amount: 12, currency: IRON_INGOT, price: 4, tier: 0 }
+  upgrades:
+    # 图标支持 icon-amount/icon-enchanted 或参考嵌套 display-item: { material, amount, enchanted }。
+    # display-lore/item-lore/lore 除通用 token 外支持 {tier_n_cost}/{tier_n_currency}/{tier_n_color} 逐阶占位符。
+    # 非陷阱升级的 receive 按顺序支持 enchant-item、player-effect、generator-edit、dragon 和 command 动作。
+    # 示例：receive: ["enchant-item: SHARPNESS,1,sword", "player-effect: HASTE,0,0,team"]。
+    # 生成器格式为 generator-edit: iron|gold|emerald,间隔秒,数量,地面上限；命令保留三种既有执行模式。
+    # 陷阱 receive 在敌人进入基地后支持 player-effect、remove-effect 和 disenchant-item；存在有效动作时替代固定效果。
+    # 陷阱可设 custom-announce: true 读取 bedwars.trap_<商品ID>_{message,title,subtitle}，参数依次为玩家、陷阱、敌队和旧式队色。
+    # sound 可写 Bukkit 音效名、NONE，或 { sound, volume, pitch } 覆盖全局陷阱音效。
+    - { id: sharpness-1, display-name: "锋利 I", icon: IRON_SWORD, type: SHARPNESS, currency: DIAMOND, price: 4, tier: 1 }
+    - { id: protection-1, display-name: "保护 I", icon: IRON_CHESTPLATE, type: PROTECTION, currency: DIAMOND, price: 2, tier: 1 }
+    - { id: protection-2, display-name: "保护 II", icon: IRON_CHESTPLATE, type: PROTECTION, currency: DIAMOND, price: 4, tier: 2 }
+    - { id: protection-3, display-name: "保护 III", icon: DIAMOND_CHESTPLATE, type: PROTECTION, currency: DIAMOND, price: 8, tier: 3 }
+    - { id: protection-4, display-name: "保护 IV", icon: DIAMOND_CHESTPLATE, type: PROTECTION, currency: DIAMOND, price: 16, tier: 4 }
+    - { id: haste-1, display-name: "急迫 I", icon: GOLDEN_PICKAXE, type: HASTE, currency: DIAMOND, price: 2, tier: 1 }
+    - { id: haste-2, display-name: "急迫 II", icon: DIAMOND_PICKAXE, type: HASTE, currency: DIAMOND, price: 4, tier: 2 }
+    - { id: forge-1, display-name: "铁锻炉", icon: FURNACE, type: FORGE, currency: DIAMOND, price: 2, tier: 1 }
+    - { id: forge-2, display-name: "金锻炉", icon: FURNACE, type: FORGE, currency: DIAMOND, price: 4, tier: 2 }
+    - { id: forge-3, display-name: "绿宝石锻炉", icon: FURNACE, type: FORGE, currency: DIAMOND, price: 6, tier: 3 }
+    - { id: forge-4, display-name: "熔融锻炉", icon: BLAST_FURNACE, type: FORGE, currency: DIAMOND, price: 8, tier: 4 }
+    - { id: dragon-buff, display-name: "龙增益", icon: DRAGON_EGG, type: DRAGON_BUFF, currency: DIAMOND, price: 5, tier: 1 }
+    - { id: heal-pool, display-name: "治愈池", icon: BEACON, type: HEAL_POOL, currency: DIAMOND, price: 1, tier: 1 }
+    - { id: blindness-trap, display-name: "失明陷阱", icon: TRIPWIRE_HOOK, type: TRAP_BLINDNESS, currency: DIAMOND, price: 1, dynamic-price: true, tier: 1 }
+    - { id: counter-offensive-trap, display-name: "反攻陷阱", icon: FEATHER, type: TRAP_COUNTER_OFFENSIVE, currency: DIAMOND, price: 1, dynamic-price: true, tier: 1 }
+    - { id: alarm-trap, display-name: "警报陷阱", icon: REDSTONE_TORCH, type: TRAP_ALARM, currency: DIAMOND, price: 1, dynamic-price: true, tier: 1, custom-announce: true }
+    - { id: miner-fatigue-trap, display-name: "挖掘疲劳陷阱", icon: IRON_PICKAXE, type: TRAP_MINER_FATIGUE, currency: DIAMOND, price: 1, dynamic-price: true, tier: 1 }
+
+specials:
+  sounds:
+    bridge-block: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+    ender-pearl-landed: { sound: ENTITY_ENDERMAN_TELEPORT, volume: 1.0, pitch: 1.0 }
+    popup-tower-build: { sound: ENTITY_CHICKEN_EGG, volume: 1.0, pitch: 1.0 }
+  tnt:
+    barycenter-alteration-y: 0.5
+    strength-reduction: 5.0
+    y-axis-reduction: 2.0
+    damage-self: 1.0
+    damage-teammates: 5.0
+    damage-others: 10.0
+    spoil-carriers: true
+  fireball:
+    speed: 10.0
+    yield: 3.0
+    make-fire: false
+    cooldown-ticks: 10
+    horizontal-knockback: 1.0
+    vertical-knockback: 0.65
+    damage-self: 2.0
+    damage-teammates: 0.0
+    damage-enemies: 2.0
+  bridge-egg:
+    start-distance: 4.0
+    max-distance: 27.0
+    max-vertical-drop: 9.0
+  bed-bug:
+    duration-seconds: 15
+    health: 8.0
+    damage: 4.0
+    speed: 0.25
+  dream-defender:
+    duration-seconds: 240
+    health: 100.0
+    damage: -1.0
+    speed: 0.25
+  potions:
+    speed-seconds: 45
+    jump-seconds: 45
+    invisibility-seconds: 30
+    remove-invisibility-on-damage: true
+  magic-milk:
+    duration-seconds: 30
+  popup-tower:
+    radius: 2
+    wall-height: 5
+    blocks-per-tick: 2
+
+maps:
+  default:
+    display-name: "默认地图"
+    template: "bedwars/default"
+
+spectator:
+  enabled: true
+  mode: managed

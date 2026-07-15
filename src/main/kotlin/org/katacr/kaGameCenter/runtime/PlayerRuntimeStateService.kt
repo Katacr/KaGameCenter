@@ -55,6 +55,9 @@ class PlayerRuntimeStateService {
         val flying: Boolean,
         val walkSpeed: Float,
         val flySpeed: Float,
+        val gravity: Boolean,
+        val collidable: Boolean,
+        val collidableExemptions: Set<UUID>,
         val invisible: Boolean,
         val invulnerable: Boolean,
         val scoreboard: Scoreboard,
@@ -66,6 +69,10 @@ class PlayerRuntimeStateService {
             player.isFlying = flying && allowFlight
             player.walkSpeed = walkSpeed
             player.flySpeed = flySpeed
+            player.setGravity(gravity)
+            player.isCollidable = collidable
+            player.collidableExemptions.clear()
+            player.collidableExemptions.addAll(collidableExemptions)
             player.isInvisible = invisible
             player.isInvulnerable = invulnerable
             player.scoreboard = scoreboard
@@ -81,6 +88,9 @@ class PlayerRuntimeStateService {
                     flying = player.isFlying,
                     walkSpeed = player.walkSpeed,
                     flySpeed = player.flySpeed,
+                    gravity = player.hasGravity(),
+                    collidable = player.isCollidable,
+                    collidableExemptions = player.collidableExemptions.toSet(),
                     invisible = player.isInvisible,
                     invulnerable = player.isInvulnerable,
                     scoreboard = player.scoreboard,

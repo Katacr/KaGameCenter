@@ -33,6 +33,8 @@ command:
     §e/{0} help §7查看帮助
     §e/{0} menu §7打开游戏中心菜单
     §e/{0} chest [menuId] §7打开箱子菜单版游戏中心
+    §e/{0} stats [gameId] §7查看个人玩法战绩
+    §e/{0} selector <gameId> [group] §7打开指定玩法或分组的房间选择器
     §e/{0} games §7查看游戏定义
     §e/{0} rooms §7查看当前房间
     §e/{0} create <gameId> [mapPath] [roomName] §7创建房间
@@ -42,7 +44,8 @@ command:
     §c/{0} admin help §7查看管理员命令
   admin_help: |-
     §6KaGameCenter 管理指令
-    §e/{0} admin manage §7打开小游戏配置主管理面板
+    §e/{0} admin manage [gameId] §7打开主管理面板或指定小游戏配置
+    §e/{0} admin <module> help §7查看已加载模块的管理指令
     §e/{0} admin create <gameId> §7创建房间
     §e/{0} admin start <roomId> §7开始房间
     §e/{0} admin close <roomId> §7关闭房间
@@ -85,6 +88,10 @@ spectator:
   item_menu: "观战菜单"
   item_leave: "退出观战"
   following: "正在跟随 {0}"
+  first_person_enter_title: "正在观战 {0}"
+  first_person_enter_subtitle: "潜行退出第一人称"
+  first_person_leave_title: "已退出第一人称观战"
+  first_person_leave_subtitle: ""
 
 icon:
   usage: "用法: /{0} admin icon <all|chat|title|actionbar|bossbar|scoreboard|tab|clear> [text]，示例: /{0} admin icon all &item:[diamond] <head:Steve>"
@@ -103,7 +110,19 @@ chat:
 selection:
   point_set: "§a已设置 {0}: §f{1} {2} {3} {4}"
   ready: "§a选区已就绪: §f{0} ({1},{2},{3}) -> ({4},{5},{6})"
-  not_ready: "§c请先使用石斧左键/右键选择一个区域。"
+  not_ready: "§c请先使用石斧左键/右键选择一个区域；未指向方块时会使用玩家脚下整数坐标。"
+
+editor_capture:
+  tool_name: "地图配置采点工具"
+  tool_left: "左键方块：采集方块或容器"
+  tool_right: "右键：采集玩家脚下整数坐标"
+  block_started: "§a已进入连续方块采集模式。手持骨头左键目标方块；重新打开编辑菜单可切换操作。"
+  position_started: "§a已进入连续位置采集模式。手持骨头右键即可记录当前脚下整数坐标；重新打开编辑菜单可切换操作。"
+  block_required: "§c当前操作需要手持骨头左键一个目标方块或容器。"
+  position_required: "§c当前操作需要手持骨头右键，以记录玩家当前脚下坐标。"
+  captured: "§a本次已采集 {0} 个点：§f{1} {2} {3} {4}"
+  stopped: "§7连续采集已结束，请重新打开托管游戏编辑菜单。"
+  inventory_full: "§e背包已满，无法自动发放工具；清出空位或手持普通骨头仍可继续采集。"
 
 dialog:
   main_title: "KaGameCenter"
@@ -139,6 +158,23 @@ room:
 
 stats:
   snapshot_line: "{0} {1}: plays={2}, wins={3}, losses={4}, kills={5}, deaths={6}, points={7}"
+  title: "&6个人战绩"
+  detail_title: "&6{0} 战绩"
+  overview: "&7已记录玩法：&f{0}"
+  no_data: "&7暂时没有玩法战绩。"
+  game_button: "&a[ {0} ]"
+  game_summary: "&7场次：&f{0} &8| &7胜利：&f{1} &8| &7击杀：&f{2}"
+  plays: "&7参与场次：&f{0}"
+  wins: "&a胜利：&f{0}"
+  losses: "&c失败：&f{0}"
+  kills: "&e总击杀：&f{0}"
+  deaths: "&7总死亡：&f{0}"
+  final_kills: "&c最终击杀：&f{0}"
+  final_deaths: "&8最终死亡：&f{0}"
+  beds_destroyed: "&d破床：&f{0}"
+  points: "&b点数：&f{0}"
+  metric_generic: "&7{0}：&f{1}"
+  button_overview: "&b[ 全部玩法 ]"
 
 game:
   definition_line: "{0}({1}): enabled={2}, players={3}-{4}, duration={5}s, maps={6}"
@@ -178,6 +214,7 @@ managed_game:
   create_map_mismatch: "§c所选地图不属于该小游戏模块。"
   create_failed: "§c创建小游戏配置失败。"
   created: "§a已创建游戏: §f{0} §7({1})"
+  editor_unavailable: "§c小游戏配置 {0} 所属模块未提供编辑器。"
   private_snapshot_missing: "§c小游戏配置 {0} 缺少私有地图快照: {1}"
 
 display:
@@ -238,6 +275,10 @@ menu:
   create_room_no_maps: "&c游戏 {0} 暂无可用地图，无法创建房间。"
   rooms_title: "&6房间列表"
   rooms_line: "&7当前活动房间: &f{0}"
+  rooms_filtered_title: "&6{0} 房间选择器"
+  rooms_filtered_line: "&7{0} 当前活动房间: &f{1}"
+  rooms_filtered_empty: "&7当前没有可用的 {0} 房间。"
+  room_group: "&7选择器分组: &f{0}"
   room_title: "&6房间 {0}"
   member_title: "&6玩家 {0}"
   maps_title: "&6地图管理"
@@ -255,6 +296,7 @@ menu:
   button_games: "&a[ 游戏列表 ]"
   button_rooms: "&b[ 房间列表 ]"
   button_create_room: "&a[ 创建房间 ]"
+  button_stats: "&6[ 个人战绩 ]"
   button_room_detail: "&e[ 房间详情 ]"
   button_join_room_list: "&b[ 加入房间 ]"
   button_create_default_room: "&a[ 创建跑酷房间 ]"

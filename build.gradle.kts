@@ -46,6 +46,10 @@ kotlin {
 }
 
 tasks {
+    jar {
+        archiveClassifier.set("plain")
+    }
+
     build {
         dependsOn(shadowJar)
     }

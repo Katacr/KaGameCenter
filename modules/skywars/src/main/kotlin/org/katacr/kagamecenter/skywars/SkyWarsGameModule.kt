@@ -1,0 +1,88 @@
+package org.katacr.kagamecenter.skywars
+
+import org.katacr.kaGameCenter.broadcast.RoomBroadcastService
+import org.katacr.kaGameCenter.elimination.PlayerEliminationService
+import org.katacr.kaGameCenter.game.GameDefinition
+import org.katacr.kaGameCenter.game.GameModule
+import org.katacr.kaGameCenter.game.GameRoom
+import org.katacr.kaGameCenter.game.GameRoomManager
+import org.katacr.kaGameCenter.game.GameSession
+import org.katacr.kaGameCenter.i18n.ModuleLanguage
+import org.katacr.kaGameCenter.nametag.PlayerNametagService
+import org.katacr.kaGameCenter.packet.PacketDispatchService
+import org.katacr.kaGameCenter.resource.RoomResourceScopeService
+import org.katacr.kaGameCenter.result.GameResultService
+import org.katacr.kaGameCenter.runtime.PlayerRuntimeStateService
+import org.katacr.kaGameCenter.spawn.SpawnAssignmentService
+import org.katacr.kaGameCenter.spectator.SpectatorMode
+import org.katacr.kaGameCenter.spectator.SpectatorPolicy
+import org.katacr.kaGameCenter.team.GameTeamService
+import org.katacr.kaGameCenter.team.TeamAssignmentService
+import org.katacr.kaGameCenter.world.TemporaryWorldService
+
+/** 描述 SkyWars 玩法并为每个 KaGameCenter 房间创建独立对局实例。 */
+class SkyWarsGameModule(
+    private val configService: SkyWarsConfigService,
+    private val worldService: TemporaryWorldService,
+    private val language: ModuleLanguage,
+    private val packetService: PacketDispatchService,
+    private val roomManager: GameRoomManager,
+    private val resultService: GameResultService,
+    private val playerRuntimeStateService: PlayerRuntimeStateService,
+    private val roomBroadcastService: RoomBroadcastService,
+    private val nametagService: PlayerNametagService,
+    private val eliminationService: PlayerEliminationService,
+    private val roomResourceScopeService: RoomResourceScopeService,
+    private val spawnAssignmentService: SpawnAssignmentService,
+    private val teamService: GameTeamService,
+    private val teamAssignmentService: TeamAssignmentService
+) : GameModule {
+    override val id: String = "skywars"
+    override val displayName: String get() = configService.current().displayName
+    override val minPlayers: Int get() = configService.current().minPlayers
+    override val maxPlayers: Int get() = configService.current().maxPlayers
+
+    override fun defaultDefinition(): GameDefinition {
+        val config = configService.current()
+        return GameDefinition(
+            id = id,
+            displayName = config.displayName,
+            enabled = config.enabled,
+            minPlayers = config.minPlayers,
+            maxPlayers = config.maxPlayers,
+            defaultDurationSeconds = config.durationSeconds,
+            countdownSeconds = config.countdownSeconds,
+            mapTemplates = config.maps.values.map { it.template },
+            optionalPlugins = listOf("PacketEvents"),
+            spectatorPolicy = SpectatorPolicy(
+                enabled = true,
+                mode = SpectatorMode.MANAGED,
+                allowDuringRunning = true,
+                allowFollowPlayer = true,
+                allowFreeFly = true,
+                revealHiddenPlayers = true
+            ),
+            description = "Island survival battle"
+        )
+    }
+
+    override fun createSession(room: GameRoom): GameSession {
+        return SkyWarsGameSession(
+            room,
+            configService,
+            worldService,
+            language,
+            packetService,
+            roomManager,
+            resultService,
+            playerRuntimeStateService,
+            roomBroadcastService,
+            nametagService,
+            eliminationService,
+            roomResourceScopeService,
+            spawnAssignmentService,
+            teamService,
+            teamAssignmentService
+        )
+    }
+}

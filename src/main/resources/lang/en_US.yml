@@ -33,6 +33,8 @@ command:
     §e/{0} help §7Show help
     §e/{0} menu §7Open the game center menu
     §e/{0} chest [menuId] §7Open a chest menu
+    §e/{0} stats [gameId] §7View your game statistics
+    §e/{0} selector <gameId> [group] §7Open the room selector for a game or group
     §e/{0} games §7List game definitions
     §e/{0} rooms §7List active rooms
     §e/{0} create <gameId> [mapPath] [roomName] §7Create a room
@@ -42,7 +44,8 @@ command:
     §c/{0} admin help §7Show admin commands
   admin_help: |-
     §6KaGameCenter Admin Commands
-    §e/{0} admin manage §7Open the managed game config panel
+    §e/{0} admin manage [gameId] §7Open the management panel or a managed game config
+    §e/{0} admin <module> help §7Show a loaded module's admin commands
     §e/{0} admin create <gameId> §7Create a room
     §e/{0} admin start <roomId> §7Start a room
     §e/{0} admin close <roomId> §7Close a room
@@ -85,6 +88,10 @@ spectator:
   item_menu: "Spectator Menu"
   item_leave: "Leave Spectator"
   following: "Following {0}"
+  first_person_enter_title: "Spectating {0}"
+  first_person_enter_subtitle: "SNEAK to exit"
+  first_person_leave_title: "Exiting spectator mode"
+  first_person_leave_subtitle: ""
 
 icon:
   usage: "Usage: /{0} admin icon <all|chat|title|actionbar|bossbar|scoreboard|tab|clear> [text], example: /{0} admin icon all &item:[diamond] <head:Steve>"
@@ -103,7 +110,19 @@ chat:
 selection:
   point_set: "§aSet {0}: §f{1} {2} {3} {4}"
   ready: "§aSelection ready: §f{0} ({1},{2},{3}) -> ({4},{5},{6})"
-  not_ready: "§cUse a stone axe left/right click to select a region first."
+  not_ready: "§cUse a stone axe left/right click to select a region; air clicks use your integer block position."
+
+editor_capture:
+  tool_name: "Map configuration capture tool"
+  tool_left: "Left-click block: capture block or container"
+  tool_right: "Right-click: capture your integer block position"
+  block_started: "§aContinuous block capture started. Hold the bone and left-click target blocks; reopen the editor to switch actions."
+  position_started: "§aContinuous position capture started. Hold the bone and right-click to save your integer block position; reopen the editor to switch actions."
+  block_required: "§cThis operation requires left-clicking a target block or container with the bone."
+  position_required: "§cThis operation requires right-clicking with the bone to capture your current position."
+  captured: "§aCaptured {0} point(s) this session: §f{1} {2} {3} {4}"
+  stopped: "§7Continuous capture stopped. Reopen the managed-game editor to continue."
+  inventory_full: "§eYour inventory is full, so the tool could not be added. Free a slot or hold a normal bone to continue."
 
 dialog:
   main_title: "KaGameCenter"
@@ -139,6 +158,23 @@ room:
 
 stats:
   snapshot_line: "{0} {1}: plays={2}, wins={3}, losses={4}, kills={5}, deaths={6}, points={7}"
+  title: "&6Personal Statistics"
+  detail_title: "&6{0} Statistics"
+  overview: "&7Recorded games: &f{0}"
+  no_data: "&7No game statistics have been recorded yet."
+  game_button: "&a[ {0} ]"
+  game_summary: "&7Plays: &f{0} &8| &7Wins: &f{1} &8| &7Kills: &f{2}"
+  plays: "&7Games Played: &f{0}"
+  wins: "&aWins: &f{0}"
+  losses: "&cLosses: &f{0}"
+  kills: "&eTotal Kills: &f{0}"
+  deaths: "&7Total Deaths: &f{0}"
+  final_kills: "&cFinal Kills: &f{0}"
+  final_deaths: "&8Final Deaths: &f{0}"
+  beds_destroyed: "&dBeds Destroyed: &f{0}"
+  points: "&bPoints: &f{0}"
+  metric_generic: "&7{0}: &f{1}"
+  button_overview: "&b[ All Games ]"
 
 game:
   definition_line: "{0}({1}): enabled={2}, players={3}-{4}, duration={5}s, maps={6}"
@@ -178,6 +214,7 @@ managed_game:
   create_map_mismatch: "§cThe selected map does not belong to this game module."
   create_failed: "§cFailed to create the managed game config."
   created: "§aCreated game: §f{0} §7({1})"
+  editor_unavailable: "§cThe module for managed game {0} does not provide an editor."
   private_snapshot_missing: "§cManaged game {0} is missing its private map snapshot: {1}"
 
 display:
@@ -238,6 +275,10 @@ menu:
   create_room_no_maps: "&cGame {0} has no available maps; cannot create a room."
   rooms_title: "&6Room List"
   rooms_line: "&7Active rooms: &f{0}"
+  rooms_filtered_title: "&6{0} Room Selector"
+  rooms_filtered_line: "&7Active {0} rooms: &f{1}"
+  rooms_filtered_empty: "&7No {0} rooms are currently available."
+  room_group: "&7Selector group: &f{0}"
   room_title: "&6Room {0}"
   member_title: "&6Player {0}"
   maps_title: "&6Map Management"
@@ -255,6 +296,7 @@ menu:
   button_games: "&a[ Game List ]"
   button_rooms: "&b[ Room List ]"
   button_create_room: "&a[ Create Room ]"
+  button_stats: "&6[ Personal Statistics ]"
   button_room_detail: "&e[ Room Detail ]"
   button_join_room_list: "&b[ Join Room ]"
   button_create_default_room: "&a[ Create Parkour Room ]"

@@ -6,6 +6,7 @@ import org.bukkit.entity.EntityType
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 import net.kyori.adventure.text.format.NamedTextColor
+import org.katacr.kaGameCenter.nametag.PlayerNametag
 
 interface PacketDispatchService {
     val backendName: String
@@ -43,4 +44,8 @@ interface PacketDispatchService {
     fun showBeaconBeam(viewer: Player, location: Location, color: NamedTextColor = NamedTextColor.AQUA, durationSeconds: Int)
 
     fun showProbe(viewer: Player, message: String)
+
+    fun sendPlayerNametag(viewer: Player, teamName: String, targetName: String, nametag: PlayerNametag)
+
+    fun clearNametagTeam(viewer: Player, teamName: String)
 }

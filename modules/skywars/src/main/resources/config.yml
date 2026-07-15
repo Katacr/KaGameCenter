@@ -1,0 +1,118 @@
+id: skywars
+name: "空岛战争"
+enabled: true
+main: jar
+jar: "../skywars.jar"
+entrypoint: "org.katacr.kagamecenter.skywars.SkyWarsModuleProvider"
+description: "KaGameCenter managed SkyWars module."
+
+game:
+  display-name: "空岛战争"
+  min-players: 2
+  max-players: 12
+  team-size: 1
+  countdown-seconds: 10
+  pvp-grace-seconds: 5
+  duration-seconds: 900
+  refill-after-seconds: 300
+  result-display-seconds: 10
+  close-delay-seconds: 5
+  reconnect-grace-seconds: 20
+  void-y: -64.0
+  max-health: 20.0
+  allow-monsters: false
+  win-points: 7
+  kill-attribution-seconds: 10
+
+loot:
+  container-materials: [CHEST, TRAPPED_CHEST, BARREL]
+  tiers:
+    island:
+      total-value: 18
+      min-item-value: 0
+      max-item-value: 5
+      refill-multiplier: 1.25
+    middle:
+      total-value: 28
+      min-item-value: 3
+      max-item-value: 10
+      refill-multiplier: 1.35
+  levels:
+    common:
+      item-value: 1
+      chance: 45
+      items:
+        - { material: WOODEN_SWORD, amount: 1 }
+        - { material: STONE_PICKAXE, amount: 1 }
+        - { material: OAK_PLANKS, amount: 16 }
+        - { material: COBBLESTONE, amount: 16 }
+        - { material: COOKED_BEEF, amount: 4 }
+        - { material: ARROW, amount: 8 }
+    uncommon:
+      item-value: 3
+      chance: 35
+      items:
+        - { material: STONE_SWORD, amount: 1 }
+        - { material: BOW, amount: 1 }
+        - { material: IRON_PICKAXE, amount: 1 }
+        - { material: CHAINMAIL_CHESTPLATE, amount: 1 }
+        - { material: ENDER_PEARL, amount: 1 }
+        - { material: GOLDEN_APPLE, amount: 1 }
+    rare:
+      item-value: 5
+      chance: 15
+      items:
+        - { material: IRON_SWORD, amount: 1 }
+        - { material: IRON_CHESTPLATE, amount: 1 }
+        - { material: DIAMOND_BOOTS, amount: 1 }
+        - { material: ENDER_PEARL, amount: 2 }
+        - { material: TNT, amount: 2 }
+    legendary:
+      item-value: 10
+      chance: 5
+      items:
+        - { material: DIAMOND_SWORD, amount: 1 }
+        - { material: DIAMOND_CHESTPLATE, amount: 1 }
+        - { material: ENCHANTED_GOLDEN_APPLE, amount: 1 }
+
+kits:
+  default:
+    enabled: true
+    display-name: "无职业"
+    icon: CHEST
+    permission: ""
+    items: []
+    armor: []
+  builder:
+    enabled: true
+    display-name: "建筑师"
+    icon: OAK_PLANKS
+    permission: ""
+    items:
+      - { material: OAK_PLANKS, amount: 16 }
+    armor: []
+  archer:
+    enabled: true
+    display-name: "弓箭手"
+    icon: BOW
+    permission: ""
+    items:
+      - { material: BOW, amount: 1 }
+      - { material: ARROW, amount: 8 }
+    armor: []
+
+blocks:
+  allow-break: true
+  allow-place: true
+  protected-materials: [BEDROCK, BARRIER, END_PORTAL_FRAME, CHEST, TRAPPED_CHEST, BARREL]
+  explosion-block-damage: true
+  fire-spread: false
+
+maps:
+  default:
+    display-name: "默认地图"
+    template: "skywars/default"
+
+spectator:
+  enabled: true
+  mode: "managed"

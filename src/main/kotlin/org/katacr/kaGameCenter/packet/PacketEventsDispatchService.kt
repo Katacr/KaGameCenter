@@ -37,6 +37,9 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.ItemStack as BukkitItemStack
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.scheduler.BukkitTask
+import org.katacr.kaGameCenter.nametag.NametagCollisionRule
+import org.katacr.kaGameCenter.nametag.NametagVisibility
+import org.katacr.kaGameCenter.nametag.PlayerNametag
 import org.bukkit.util.Transformation
 import org.joml.Quaternionf
 import org.joml.Vector3f
@@ -328,6 +331,32 @@ class PacketEventsDispatchService(
         send(viewer, WrapperPlayServerActionBar(Component.text(message, NamedTextColor.YELLOW)))
     }
 
+    override fun sendPlayerNametag(viewer: Player, teamName: String, targetName: String, nametag: PlayerNametag) {
+        if (!available || !viewer.isOnline) return
+        val info = WrapperPlayServerTeams.ScoreBoardTeamInfo(
+            Component.text(teamName),
+            nametag.prefix,
+            nametag.suffix,
+            nametag.visibility.toPacketVisibility(),
+            nametag.collisionRule.toPacketCollisionRule(),
+            nametag.color,
+            WrapperPlayServerTeams.OptionData.NONE
+        )
+        send(viewer, WrapperPlayServerTeams(teamName, WrapperPlayServerTeams.TeamMode.CREATE, info, targetName))
+    }
+
+    override fun clearNametagTeam(viewer: Player, teamName: String) {
+        if (!available || !viewer.isOnline) return
+        send(
+            viewer,
+            WrapperPlayServerTeams(
+                teamName,
+                WrapperPlayServerTeams.TeamMode.REMOVE,
+                null as WrapperPlayServerTeams.ScoreBoardTeamInfo?
+            )
+        )
+    }
+
     private fun track(viewer: Player, visual: ActiveVisual, durationSeconds: Int) {
         visualsByViewer.computeIfAbsent(viewer.uniqueId) { mutableListOf() }.add(visual)
         plugin.server.scheduler.runTaskLater(plugin, Runnable {
@@ -584,6 +613,24 @@ class PacketEventsDispatchService(
 
     private fun teamName(entityId: Int): String {
         return "kgc${entityId.toString().takeLast(12)}"
+    }
+
+    private fun NametagVisibility.toPacketVisibility(): WrapperPlayServerTeams.NameTagVisibility {
+        return when (this) {
+            NametagVisibility.ALWAYS -> WrapperPlayServerTeams.NameTagVisibility.ALWAYS
+            NametagVisibility.NEVER -> WrapperPlayServerTeams.NameTagVisibility.NEVER
+            NametagVisibility.HIDE_FOR_OTHER_TEAMS -> WrapperPlayServerTeams.NameTagVisibility.HIDE_FOR_OTHER_TEAMS
+            NametagVisibility.HIDE_FOR_OWN_TEAM -> WrapperPlayServerTeams.NameTagVisibility.HIDE_FOR_OWN_TEAM
+        }
+    }
+
+    private fun NametagCollisionRule.toPacketCollisionRule(): WrapperPlayServerTeams.CollisionRule {
+        return when (this) {
+            NametagCollisionRule.ALWAYS -> WrapperPlayServerTeams.CollisionRule.ALWAYS
+            NametagCollisionRule.NEVER -> WrapperPlayServerTeams.CollisionRule.NEVER
+            NametagCollisionRule.PUSH_OTHER_TEAMS -> WrapperPlayServerTeams.CollisionRule.PUSH_OTHER_TEAMS
+            NametagCollisionRule.PUSH_OWN_TEAM -> WrapperPlayServerTeams.CollisionRule.PUSH_OWN_TEAM
+        }
     }
 
     private fun send(player: Player, packet: PacketWrapper<*>) {

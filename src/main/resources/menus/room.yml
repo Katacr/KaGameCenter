@@ -29,6 +29,10 @@ Bottom:
       text: "{menu.button_start_room}"
       actions:
         - "kgc:start {room.id}"
+    stats:
+      text: "{menu.button_stats}"
+      actions:
+        - "kgc:open-stats {game.id}"
     leave:
       text: "{menu.button_leave}"
       actions:
@@ -40,13 +44,13 @@ Bottom:
     refresh:
       text: "{menu.button_refresh}"
       actions:
-        - "kgc:open-room {room.id}"
+        - "{room.refresh_action}"
     member_slots:
       TYPE: "player_slots"
       text: "{menu.member_button}"
       empty-text: "{menu.member_empty}"
       actions:
-        - "kgc:open-member {room.id} {player.uuid}"
+        - "{player.open_action}"
       tooltip:
         - "{menu.member_tooltip}"
         - "&7Online: &f{player.online}"
@@ -55,4 +59,4 @@ Bottom:
   exit:
     text: "{menu.button_back}"
     actions:
-      - "kgc:open-rooms"
+      - "{rooms.list_action}"

@@ -1,6 +1,8 @@
 package org.katacr.kaGameCenter.team
 
+import org.bukkit.Bukkit
 import org.bukkit.entity.Player
+import org.katacr.kaGameCenter.event.GamePlayerTeamAssignEvent
 import java.util.UUID
 
 class GameTeamService {
@@ -14,8 +16,12 @@ class GameTeamService {
     fun join(roomId: String, player: Player, teamId: String): Boolean {
         val team = roomTeams[roomId]?.get(teamId.lowercase()) ?: return false
         val members = teamMembers.getOrPut(roomId) { linkedMapOf() }
+        if (members[player.uniqueId]?.equals(team.id, ignoreCase = true) == true) return true
         val currentCount = members.values.count { it == team.id }
         if (currentCount >= team.maxPlayers) return false
+        val assignEvent = GamePlayerTeamAssignEvent(roomId, player, members[player.uniqueId], team.id)
+        Bukkit.getPluginManager().callEvent(assignEvent)
+        if (assignEvent.isCancelled) return false
         members[player.uniqueId] = team.id
         return true
     }

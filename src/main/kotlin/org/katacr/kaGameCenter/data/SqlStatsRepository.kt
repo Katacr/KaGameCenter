@@ -33,6 +33,7 @@ class SqlStatsRepository(
         dataSource.connection.use { connection ->
             connection.createStatement().use { statement ->
                 statement.execute(createTableSql())
+                statement.execute(createMetricTableSql())
             }
         }
         plugin.logger.info("KaGameCenter stats database initialized: ${config.type}")
@@ -73,6 +74,41 @@ class SqlStatsRepository(
             when (config.type) {
                 DatabaseType.SQLITE -> saveSqlite(connection, stats)
                 DatabaseType.MYSQL -> saveMysql(connection, stats)
+            }
+        }
+    }
+
+    override fun loadMetrics(): List<PlayerGameMetric> {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(
+                """
+                SELECT player_id, game_id, metric_id, metric_value
+                FROM kgc_player_metrics
+                """.trimIndent()
+            ).use { statement ->
+                statement.executeQuery().use { result ->
+                    val output = mutableListOf<PlayerGameMetric>()
+                    while (result.next()) {
+                        output.add(
+                            PlayerGameMetric(
+                                playerId = UUID.fromString(result.getString("player_id")),
+                                gameId = result.getString("game_id"),
+                                metricId = result.getString("metric_id"),
+                                value = result.getInt("metric_value")
+                            )
+                        )
+                    }
+                    return output
+                }
+            }
+        }
+    }
+
+    override fun saveMetric(metric: PlayerGameMetric) {
+        dataSource.connection.use { connection ->
+            when (config.type) {
+                DatabaseType.SQLITE -> saveMetricSqlite(connection, metric)
+                DatabaseType.MYSQL -> saveMetricMysql(connection, metric)
             }
         }
     }
@@ -127,6 +163,42 @@ class SqlStatsRepository(
         }
     }
 
+    /** 使用 SQLite 冲突更新语法保存单个玩法扩展指标。 */
+    private fun saveMetricSqlite(connection: Connection, metric: PlayerGameMetric) {
+        connection.prepareStatement(
+            """
+            INSERT INTO kgc_player_metrics
+                (player_id, game_id, metric_id, metric_value, updated_at)
+            VALUES
+                (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(player_id, game_id, metric_id) DO UPDATE SET
+                metric_value = excluded.metric_value,
+                updated_at = CURRENT_TIMESTAMP
+            """.trimIndent()
+        ).use { statement ->
+            bindMetric(statement, metric)
+            statement.executeUpdate()
+        }
+    }
+
+    /** 使用 MySQL 冲突更新语法保存单个玩法扩展指标。 */
+    private fun saveMetricMysql(connection: Connection, metric: PlayerGameMetric) {
+        connection.prepareStatement(
+            """
+            INSERT INTO kgc_player_metrics
+                (player_id, game_id, metric_id, metric_value, updated_at)
+            VALUES
+                (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON DUPLICATE KEY UPDATE
+                metric_value = VALUES(metric_value),
+                updated_at = CURRENT_TIMESTAMP
+            """.trimIndent()
+        ).use { statement ->
+            bindMetric(statement, metric)
+            statement.executeUpdate()
+        }
+    }
+
     private fun bindStats(statement: java.sql.PreparedStatement, stats: PlayerGameStats) {
         statement.setString(1, stats.playerId.toString())
         statement.setString(2, stats.gameId.lowercase())
@@ -136,6 +208,14 @@ class SqlStatsRepository(
         statement.setInt(6, stats.kills)
         statement.setInt(7, stats.deaths)
         statement.setInt(8, stats.points)
+    }
+
+    /** 绑定玩法扩展指标的联合主键与计数值。 */
+    private fun bindMetric(statement: java.sql.PreparedStatement, metric: PlayerGameMetric) {
+        statement.setString(1, metric.playerId.toString())
+        statement.setString(2, metric.gameId.lowercase())
+        statement.setString(3, metric.metricId.lowercase())
+        statement.setInt(4, metric.value)
     }
 
     private fun jdbcUrl(): String {
@@ -173,6 +253,32 @@ class SqlStatsRepository(
                     points INT NOT NULL DEFAULT 0,
                     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (player_id, game_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """.trimIndent()
+        }
+    }
+
+    /** 生成当前数据库方言的玩法扩展指标表结构。 */
+    private fun createMetricTableSql(): String {
+        return when (config.type) {
+            DatabaseType.SQLITE -> """
+                CREATE TABLE IF NOT EXISTS kgc_player_metrics (
+                    player_id TEXT NOT NULL,
+                    game_id TEXT NOT NULL,
+                    metric_id TEXT NOT NULL,
+                    metric_value INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (player_id, game_id, metric_id)
+                )
+            """.trimIndent()
+            DatabaseType.MYSQL -> """
+                CREATE TABLE IF NOT EXISTS kgc_player_metrics (
+                    player_id VARCHAR(36) NOT NULL,
+                    game_id VARCHAR(64) NOT NULL,
+                    metric_id VARCHAR(64) NOT NULL,
+                    metric_value INT NOT NULL DEFAULT 0,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (player_id, game_id, metric_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """.trimIndent()
         }

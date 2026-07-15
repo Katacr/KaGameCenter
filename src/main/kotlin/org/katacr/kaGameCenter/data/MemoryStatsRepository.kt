@@ -9,5 +9,9 @@ class MemoryStatsRepository : StatsRepository {
 
     override fun save(stats: PlayerGameStats) {}
 
+    override fun loadMetrics(): List<PlayerGameMetric> = emptyList()
+
+    override fun saveMetric(metric: PlayerGameMetric) {}
+
     override fun close() {}
 }

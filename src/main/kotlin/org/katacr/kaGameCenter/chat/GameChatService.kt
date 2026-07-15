@@ -31,6 +31,11 @@ class GameChatService(
         formatters.remove(moduleId.lowercase())
     }
 
+    /** 仅注销当前仍由指定实例占用的格式器，避免旧模块上下文删除替代实例。 */
+    fun unregisterFormatter(moduleId: String, formatter: GameChatFormatter): Boolean {
+        return formatters.remove(moduleId.lowercase(), formatter)
+    }
+
     fun shouldHandleDefaultChat(player: Player): Boolean {
         return enabled && roomManager.getPlayerRoom(player) != null
     }
@@ -38,8 +43,12 @@ class GameChatService(
     fun handleDefaultChat(player: Player, message: String): Boolean {
         if (!enabled) return false
         val room = roomManager.getPlayerRoom(player) ?: return false
-        if (sendTeamChatIfPossible(player, room, message)) return true
-        sendRoomChat(player, room, message)
+        val requestedChannel = if (teamService.getTeam(room.id, player.uniqueId) == null) {
+            GameChatChannel.ROOM
+        } else {
+            GameChatChannel.TEAM
+        }
+        sendRoutedChat(player, room, message, requestedChannel)
         return true
     }
 
@@ -52,28 +61,46 @@ class GameChatService(
     fun sendRoomChat(player: Player, message: String): Boolean {
         if (!enabled) return false
         val room = roomManager.getPlayerRoom(player) ?: return false
-        sendRoomChat(player, room, message)
+        sendRoutedChat(player, room, message, GameChatChannel.ROOM)
         return true
     }
 
-    private fun sendRoomChat(player: Player, room: GameRoom, message: String) {
-        val formatted = formatChat(GameChatContext(GameChatChannel.ROOM, room, player, message))
-        val audience = roomAudience(room)
+    /** 应用玩法会话路由并在显式受众、频道受众和管理员旁听之间保持房间隔离。 */
+    private fun sendRoutedChat(
+        player: Player,
+        room: GameRoom,
+        message: String,
+        requestedChannel: GameChatChannel
+    ) {
+        val requestedRoute = runCatching { room.session.routeChat(player, message, requestedChannel) }
+            .onFailure {
+                plugin.logger.warning("Game chat route failed for ${room.module.id} in room ${room.id}: ${it.message}")
+            }
+            .getOrNull() ?: return
+        if (roomManager.getRoom(room.id) !== room || roomManager.getPlayerRoom(player) !== room) return
+        val team = teamService.getTeam(room.id, player.uniqueId)
+        val route = if (requestedRoute.channel == GameChatChannel.TEAM && team == null) {
+            requestedRoute.copy(channel = GameChatChannel.ROOM)
+        } else {
+            requestedRoute
+        }
+        val formatted = formatChat(GameChatContext(
+            route.channel,
+            room,
+            player,
+            route.message,
+            team,
+            route.variant
+        ))
+        val audience = route.audience?.let { explicitAudience(room, route.channel, it) }
+            ?: when (route.channel) {
+                GameChatChannel.ROOM -> roomAudience(room)
+                GameChatChannel.TEAM -> teamAudience(room, team?.id)
+                GameChatChannel.GLOBAL -> Bukkit.getOnlinePlayers().toList()
+            }
         audience.forEach { it.sendMessage(Component.text(formatted)) }
         sendSpyChat(room, audience.map { it.uniqueId }.toSet(), formatted)
         Bukkit.getConsoleSender().sendMessage(formatted)
-    }
-
-    private fun sendTeamChatIfPossible(player: Player, room: GameRoom, message: String): Boolean {
-        val team = teamService.getTeam(room.id, player.uniqueId) ?: return false
-        val formatted = formatChat(GameChatContext(GameChatChannel.TEAM, room, player, message, team))
-        val audience = teamService.getMembers(room.id, team.id)
-            .mapNotNull { Bukkit.getPlayer(it) }
-            .distinctBy { it.uniqueId }
-        audience.forEach { it.sendMessage(Component.text(formatted)) }
-        sendSpyChat(room, audience.map { it.uniqueId }.toSet(), formatted)
-        Bukkit.getConsoleSender().sendMessage(formatted)
-        return true
     }
 
     private fun formatChat(context: GameChatContext): String {
@@ -108,6 +135,24 @@ class GameChatService(
         return (room.players + room.spectators)
             .mapNotNull { Bukkit.getPlayer(it) }
             .distinctBy { it.uniqueId }
+    }
+
+    /** 返回当前房间指定队伍的在线成员，避免同名队伍跨房串台。 */
+    private fun teamAudience(room: GameRoom, teamId: String?): List<Player> {
+        if (teamId == null) return emptyList()
+        return teamService.getMembers(room.id, teamId)
+            .mapNotNull(Bukkit::getPlayer)
+            .distinctBy { it.uniqueId }
+    }
+
+    /** 将玩法显式受众限制在当前房间；只有显式全局频道可包含房间外玩家。 */
+    private fun explicitAudience(room: GameRoom, channel: GameChatChannel, audience: Set<UUID>): List<Player> {
+        val roomMembers = room.players + room.spectators
+        return audience.asSequence()
+            .filter { channel == GameChatChannel.GLOBAL || it in roomMembers }
+            .mapNotNull(Bukkit::getPlayer)
+            .distinctBy { it.uniqueId }
+            .toList()
     }
 
     private fun sendSpyChat(room: GameRoom, excluded: Set<UUID>, formatted: String) {

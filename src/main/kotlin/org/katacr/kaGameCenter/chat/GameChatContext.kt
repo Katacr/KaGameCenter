@@ -9,5 +9,6 @@ data class GameChatContext(
     val room: GameRoom,
     val player: Player,
     val message: String,
-    val team: GameTeam? = null
+    val team: GameTeam? = null,
+    val variant: String? = null
 )

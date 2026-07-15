@@ -93,12 +93,16 @@ class ManagedGameModuleService(
         }
 
         val classLoader = URLClassLoader(arrayOf(jarFile.toURI().toURL()), plugin.javaClass.classLoader)
+        var provider: GameModuleProvider? = null
+        var context: GameModuleContext? = null
+        var loadStarted = false
         try {
-            val provider = classLoader.loadClass(entrypoint)
+            val loadedProvider = classLoader.loadClass(entrypoint)
                 .getDeclaredConstructor()
                 .newInstance() as? GameModuleProvider
                 ?: error("Entrypoint does not implement GameModuleProvider: $entrypoint")
-            val context = GameModuleContext(
+            provider = loadedProvider
+            val moduleContext = GameModuleContext(
                 id = moduleId,
                 dataFolder = dataFolder,
                 plugin = plugin,
@@ -108,6 +112,7 @@ class ManagedGameModuleService(
                 languageManager = languageManager,
                 packetService = packetService,
                 selectionService = selectionService,
+                editorPointCaptureService = api.editorPointCaptureService,
                 teamService = api.teamService,
                 teamAssignmentService = api.teamAssignmentService,
                 chatService = api.chatService,
@@ -120,13 +125,28 @@ class ManagedGameModuleService(
                 resultService = api.resultService,
                 playerRuntimeStateService = api.playerRuntimeStateService,
                 roomBroadcastService = api.roomBroadcastService,
+                nametagService = api.nametagService,
+                eliminationService = api.eliminationService,
+                spectatorService = api.spectatorService,
+                roomResourceScopeService = api.roomResourceScopeService,
+                managedMapPointService = api.managedMapPointService,
+                spawnAssignmentService = api.spawnAssignmentService,
                 moduleAdminRegistry = moduleAdminCommands
             )
-            provider.onLoad(context)
-            loadedModules[moduleId] = LoadedGameModule(moduleId, provider, context, classLoader)
+            context = moduleContext
+            loadStarted = true
+            loadedProvider.onLoad(moduleContext)
+            loadedModules[moduleId] = LoadedGameModule(moduleId, loadedProvider, moduleContext, classLoader)
             plugin.logger.info("Managed game module jar loaded: $moduleId")
         } catch (error: Throwable) {
+            if (loadStarted) {
+                runCatching { provider?.onUnload() }
+                    .onFailure { plugin.logger.warning("Failed to roll back game module provider $moduleId: ${it.message}") }
+            }
+            runCatching { context?.cleanup() }
+                .onFailure { plugin.logger.warning("Failed to roll back game module context $moduleId: ${it.message}") }
             runCatching { classLoader.close() }
+                .onFailure { plugin.logger.warning("Failed to close failed game module classloader $moduleId: ${it.message}") }
             plugin.logger.warning("Failed to load managed game module $moduleId: ${error.message}")
             error.printStackTrace()
         }

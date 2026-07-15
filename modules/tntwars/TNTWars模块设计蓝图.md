@@ -1,18 +1,12 @@
 # TNT Wars 模块设计蓝图
 
-更新时间：2026-06-22
+更新时间：2026-07-13
 
 ## 模块定位
 
-`tntwars` 是 KaGameCenter 的外置小游戏模块，目标是把 `Map-MiniGames` 中的 TNT Wars 数据包玩法重构为 Paper 插件模块。
+`tntwars` 是 KaGameCenter 的外置小游戏模块，目标是提供可多房间并发的 Paper TNT 团队对抗玩法。
 
-参考数据包路径：
-
-```text
-/home/plugins/KaGameCenter/Map-MiniGames/datapacks/map_all/data/minecraft/function/tntwars/
-```
-
-原玩法摘要：
+玩法摘要：
 
 - 玩家分为 `队伍A` 和 `队伍B`。
 - 地图位于空中，两队出生在地图两侧。
@@ -20,7 +14,6 @@
 - 使用 TNT、火球、苦力怕、TNT 雨等道具破坏地形并把敌方炸下虚空。
 - 掉入虚空的玩家被淘汰并进入观战。
 - 任意一队存活玩家归零，另一队获胜。
-- 原数据包包含 `boat1`、`ballon1`、`cloud1`、`planet1` 四张地图。
 
 ## 设计目标
 
@@ -222,9 +215,9 @@ tntwars:
 
 ## 道具设计
 
-原数据包道具：
+计划道具：
 
-| ID | 原道具 | 第一版建议 |
+| ID | 道具 | 实现状态 |
 | --- | --- | --- |
 | `tnt_minecart` | 连发 TNT 矿车 | 已实现 |
 | `tnt` | 普通 TNT | 第一版实现 |

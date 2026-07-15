@@ -3,7 +3,7 @@ package org.katacr.kaGameCenter.game
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
 
-data class ManagedGameConfig(
+data class ManagedGameConfig @JvmOverloads constructor(
     val globalId: String,
     val localId: String,
     val moduleId: String,
@@ -15,7 +15,8 @@ data class ManagedGameConfig(
     val maxPlayers: Int?,
     val description: String,
     val file: File,
-    val config: YamlConfiguration
+    val config: YamlConfiguration,
+    val selectorGroup: String = "default"
 ) {
     val runtimeMapFolder: File
         get() = File(file.parentFile.parentFile, "map/$localId")

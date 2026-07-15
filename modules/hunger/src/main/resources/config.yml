@@ -1,0 +1,149 @@
+id: hunger
+name: "饥饿游戏"
+enabled: true
+main: jar
+jar: "../hunger.jar"
+entrypoint: "org.katacr.kagamecenter.hunger.HungerModuleProvider"
+description: "Classic external Survival Games module."
+
+game:
+  display-name: "饥饿游戏"
+  min-players: 6
+  max-players: 24
+  countdown-seconds: 60
+  protection-seconds: 60
+  duration-seconds: 900
+  refill-after-seconds: 300
+  force-deathmatch-players: 4
+  force-deathmatch-delay-seconds: 60
+  deathmatch-seconds: 300
+  result-display-seconds: 10
+  close-delay-seconds: 5
+  void-y: -64.0
+  max-health: 20.0
+  allow-monsters: false
+  win-points: 3
+
+loot:
+  min-items-per-chest: 1
+  max-items-per-chest: 10
+  container-materials:
+    - CHEST
+    - TRAPPED_CHEST
+    - BARREL
+  entries:
+    - material: WOODEN_SWORD
+      min-amount: 1
+      max-amount: 1
+      weight: 5
+    - material: STONE_SWORD
+      min-amount: 1
+      max-amount: 1
+      weight: 3
+    - material: IRON_SWORD
+      min-amount: 1
+      max-amount: 1
+      weight: 1
+    - material: BOW
+      min-amount: 1
+      max-amount: 1
+      weight: 3
+    - material: ARROW
+      min-amount: 2
+      max-amount: 8
+      weight: 6
+    - material: LEATHER_HELMET
+      min-amount: 1
+      max-amount: 1
+      weight: 5
+    - material: LEATHER_CHESTPLATE
+      min-amount: 1
+      max-amount: 1
+      weight: 5
+    - material: LEATHER_LEGGINGS
+      min-amount: 1
+      max-amount: 1
+      weight: 5
+    - material: LEATHER_BOOTS
+      min-amount: 1
+      max-amount: 1
+      weight: 5
+    - material: CHAINMAIL_HELMET
+      min-amount: 1
+      max-amount: 1
+      weight: 3
+    - material: CHAINMAIL_CHESTPLATE
+      min-amount: 1
+      max-amount: 1
+      weight: 3
+    - material: CHAINMAIL_LEGGINGS
+      min-amount: 1
+      max-amount: 1
+      weight: 3
+    - material: CHAINMAIL_BOOTS
+      min-amount: 1
+      max-amount: 1
+      weight: 3
+    - material: IRON_HELMET
+      min-amount: 1
+      max-amount: 1
+      weight: 1
+    - material: COOKED_BEEF
+      min-amount: 1
+      max-amount: 4
+      weight: 8
+    - material: BREAD
+      min-amount: 1
+      max-amount: 3
+      weight: 8
+    - material: GOLDEN_CARROT
+      min-amount: 1
+      max-amount: 2
+      weight: 3
+    - material: COBWEB
+      min-amount: 1
+      max-amount: 3
+      weight: 4
+    - material: TNT
+      min-amount: 1
+      max-amount: 2
+      weight: 2
+    - material: FLINT_AND_STEEL
+      min-amount: 1
+      max-amount: 1
+      weight: 1
+    - material: FISHING_ROD
+      min-amount: 1
+      max-amount: 1
+      weight: 3
+    - material: COMPASS
+      min-amount: 1
+      max-amount: 1
+      weight: 2
+
+blocks:
+  break-allowed:
+    - COBWEB
+    - OAK_LEAVES
+    - SPRUCE_LEAVES
+    - BIRCH_LEAVES
+  place-allowed:
+    - COBWEB
+    - TNT
+  auto-prime-tnt: true
+  tnt-fuse-ticks: 40
+  explosion-block-damage: false
+  fire-spread: false
+
+tracker:
+  enabled: false
+  range: 100.0
+
+maps:
+  default:
+    display-name: "默认地图"
+    template: "hunger/default"
+
+spectator:
+  enabled: true
+  mode: "managed"

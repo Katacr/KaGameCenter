@@ -239,40 +239,60 @@ class GameDisplayService(
     private fun updateTabList(room: GameRoom) {
         val teams = teamService.getTeams(room.id).take(MAX_RENDER_TEAMS)
         val players = room.playersOnline()
-        val header = buildTabHeader(room, teams)
-        val footer = buildTabFooter(room, teams)
+        val spectators = room.spectators
+            .mapNotNull(Bukkit::getPlayer)
+            .sortedBy { it.name.lowercase() }
+        val customHeaderFooter = room.session.usesCustomTabHeaderFooter()
+        val customPlayerNames = room.session.usesCustomTabPlayerNames()
+        val header = if (customHeaderFooter) "" else buildTabHeader(room, teams)
+        val footer = if (customHeaderFooter) "" else buildTabFooter(room, teams)
 
         if (teams.isEmpty()) {
             players.sortedBy { it.name.lowercase() }.forEachIndexed { index, player ->
-                player.playerListOrder = TAB_BASE_ORDER + index
-                player.playerListName(Component.text(languageManager.getMessage("display.tab_player", player.name), NamedTextColor.WHITE))
-                player.setPlayerListHeaderFooter(header, footer)
+                player.playerListOrder = room.session
+                    .tabPlayerListOrder(player, TAB_BASE_ORDER + index)
+                    .coerceAtLeast(0)
+                if (!customPlayerNames) {
+                    player.playerListName(Component.text(languageManager.getMessage("display.tab_player", player.name), NamedTextColor.WHITE))
+                }
+                if (!customHeaderFooter) player.setPlayerListHeaderFooter(header, footer)
             }
-            return
-        }
+        } else {
+            val orderByPlayer = linkedMapOf<UUID, Int>()
+            teams.forEachIndexed { teamIndex, team ->
+                teamService.getMembers(room.id, team.id)
+                    .mapNotNull { Bukkit.getPlayer(it) }
+                    .sortedBy { it.name.lowercase() }
+                    .forEachIndexed { slotIndex, player ->
+                        orderByPlayer[player.uniqueId] = TAB_BASE_ORDER + teamIndex * TEAM_MEMBER_SLOTS + slotIndex
+                        if (!customPlayerNames) {
+                            player.playerListName(Component.text(languageManager.getMessage("display.tab_team_player", team.displayName, player.name), NamedTextColor.WHITE))
+                        }
+                    }
+            }
 
-        val orderByPlayer = linkedMapOf<UUID, Int>()
-        teams.forEachIndexed { teamIndex, team ->
-            teamService.getMembers(room.id, team.id)
+            teamService.getUngroupedPlayers(room.id, room.players)
                 .mapNotNull { Bukkit.getPlayer(it) }
                 .sortedBy { it.name.lowercase() }
-                .forEachIndexed { slotIndex, player ->
-                    orderByPlayer[player.uniqueId] = TAB_BASE_ORDER + teamIndex * TEAM_MEMBER_SLOTS + slotIndex
-                    player.playerListName(Component.text(languageManager.getMessage("display.tab_team_player", team.displayName, player.name), NamedTextColor.WHITE))
+                .forEachIndexed { index, player ->
+                    orderByPlayer[player.uniqueId] = TAB_UNGROUPED_ORDER + index
+                    if (!customPlayerNames) {
+                        player.playerListName(Component.text(languageManager.getMessage("display.tab_ungrouped_player", player.name), NamedTextColor.GRAY))
+                    }
                 }
+
+            players.forEachIndexed { fallbackIndex, player ->
+                val defaultOrder = orderByPlayer[player.uniqueId] ?: (TAB_UNGROUPED_ORDER + fallbackIndex)
+                player.playerListOrder = room.session.tabPlayerListOrder(player, defaultOrder).coerceAtLeast(0)
+                if (!customHeaderFooter) player.setPlayerListHeaderFooter(header, footer)
+            }
         }
 
-        teamService.getUngroupedPlayers(room.id, room.players)
-            .mapNotNull { Bukkit.getPlayer(it) }
-            .sortedBy { it.name.lowercase() }
-            .forEachIndexed { index, player ->
-                orderByPlayer[player.uniqueId] = TAB_UNGROUPED_ORDER + index
-                player.playerListName(Component.text(languageManager.getMessage("display.tab_ungrouped_player", player.name), NamedTextColor.GRAY))
-            }
-
-        players.forEachIndexed { fallbackIndex, player ->
-            player.playerListOrder = orderByPlayer[player.uniqueId] ?: (TAB_UNGROUPED_ORDER + fallbackIndex)
-            player.setPlayerListHeaderFooter(header, footer)
+        spectators.forEachIndexed { index, player ->
+            player.playerListOrder = room.session
+                .tabPlayerListOrder(player, TAB_SPECTATOR_ORDER + index)
+                .coerceAtLeast(0)
+            if (!customHeaderFooter) player.setPlayerListHeaderFooter(header, footer)
         }
     }
 
@@ -353,5 +373,6 @@ class GameDisplayService(
         private const val TEAM_MEMBER_SLOTS = 6
         private const val TAB_BASE_ORDER = 2000
         private const val TAB_UNGROUPED_ORDER = 2900
+        private const val TAB_SPECTATOR_ORDER = 3900
     }
 }

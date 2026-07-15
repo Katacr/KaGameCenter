@@ -2,6 +2,7 @@ package org.katacr.kaGameCenter.menu.chest
 
 import org.bukkit.entity.Player
 import org.bukkit.event.EventHandler
+import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
@@ -30,11 +31,23 @@ class ChestMenuListener(
         menuService.handleClick(player, holder, slot, clickKey)
     }
 
+    /** 最终保持虚拟箱子菜单点击取消，防止后续监听器把渲染图标放入玩家背包。 */
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onClickComplete(event: InventoryClickEvent) {
+        if (event.inventory.holder is ChestMenuHolder) event.isCancelled = true
+    }
+
     @EventHandler
     fun onDrag(event: InventoryDragEvent) {
         if (event.inventory.holder is ChestMenuHolder) {
             event.isCancelled = true
         }
+    }
+
+    /** 最终保持虚拟箱子菜单拖拽取消，防止后续监听器向菜单或背包写入物品。 */
+    @EventHandler(priority = EventPriority.MONITOR)
+    fun onDragComplete(event: InventoryDragEvent) {
+        if (event.inventory.holder is ChestMenuHolder) event.isCancelled = true
     }
 
     @EventHandler

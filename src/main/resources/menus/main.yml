@@ -25,6 +25,11 @@ Bottom:
       width: 150
       actions:
         - "kgc:open-rooms"
+    stats:
+      text: "{menu.button_stats}"
+      width: 150
+      actions:
+        - "kgc:open-stats"
     leave:
       text: "{menu.button_leave}"
       width: 150

@@ -37,6 +37,8 @@ class ManagedGameCatalogService(
                         globalId = globalId,
                         localId = localId,
                         moduleId = moduleId,
+                        selectorGroup = config.getString("selector-group", "default")
+                            ?.trim()?.ifBlank { "default" } ?: "default",
                         displayName = config.getString("display-name", localId) ?: localId,
                         enabled = config.getBoolean("enabled", true),
                         sharedMapTemplate = config.getString("shared-map-template", config.getString("map-template", "$moduleId/default")) ?: "$moduleId/default",
@@ -62,6 +64,14 @@ class ManagedGameCatalogService(
         editors[editor.moduleId.lowercase(Locale.ROOT)] = editor
     }
 
+    /** 仅注销当前仍由同一实例占用的编辑器，避免旧上下文移除替代实例。 */
+    fun unregisterEditor(editor: ModuleGameEditor): Boolean {
+        val key = editor.moduleId.lowercase(Locale.ROOT)
+        if (editors[key] !== editor) return false
+        editors.remove(key)
+        return true
+    }
+
     fun getEditor(moduleId: String): ModuleGameEditor? = editors[moduleId.lowercase(Locale.ROOT)]
 
     fun createManagedGame(moduleId: String, sharedMapTemplate: String, displayName: String): ManagedGameConfig? {
@@ -74,6 +84,7 @@ class ManagedGameCatalogService(
         val config = YamlConfiguration()
         config.set("id", localId)
         config.set("module", moduleId)
+        config.set("selector-group", "default")
         config.set("display-name", displayName)
         config.set("enabled", true)
         config.set("shared-map-template", sharedMapTemplate)

@@ -41,6 +41,8 @@ class KaGameCenterCommand(
         "help",
         "menu",
         "chest",
+        "stats",
+        "selector",
         "games",
         "rooms",
         "create",
@@ -85,6 +87,23 @@ class KaGameCenterCommand(
                 if (!chestMenuService.open(sender, menuId)) {
                     sender.sendMessage(Component.text(languageManager.getMessage("menu.chest_not_found", menuId)))
                 }
+            }
+            "stats" -> {
+                if (!requireUser(sender)) return true
+                if (sender !is Player) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_dialog")))
+                    return true
+                }
+                menuService.openStatsMenu(sender, args.getOrNull(1))
+            }
+            "selector" -> {
+                if (!requireUser(sender)) return true
+                if (sender !is Player) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_dialog")))
+                    return true
+                }
+                val gameId = args.getOrNull(1) ?: return usage(sender, label)
+                menuService.openRoomsMenu(sender, gameId, args.getOrNull(2))
             }
             "games" -> {
                 if (!requireUser(sender)) return true
@@ -196,7 +215,18 @@ class KaGameCenterCommand(
                     sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_dialog")))
                     return
                 }
-                menuService.openAdminManageMenu(player)
+                val gameId = args.getOrNull(2)
+                if (gameId == null) {
+                    menuService.openAdminManageMenu(player)
+                    return
+                }
+                if (managedGameCatalog.get(gameId) == null) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("command.game_not_found", gameId)))
+                    return
+                }
+                if (!managedGameCatalog.openEditor(player, gameId)) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("managed_game.editor_unavailable", gameId)))
+                }
             }
             "create" -> {
                 val gameId = args.getOrNull(2) ?: return showUsage(sender, label)
@@ -494,6 +524,11 @@ class KaGameCenterCommand(
                 when (args[0].lowercase()) {
                     "join" -> roomManager.listRooms().map { it.id }.filter { it.startsWith(prefix) }
                     "chest" -> listOf("main").filter { it.startsWith(prefix) }
+                    "stats", "selector" -> (
+                        roomManager.listModules().map { it.id } +
+                            roomManager.listDefinitions().map { it.id } +
+                            managedGameCatalog.all().map { it.globalId }
+                        ).distinct().filter { it.startsWith(prefix) }
                     "create" -> completeCreate(args)
                     "quickjoin" -> (roomManager.listDefinitions().map { it.id } + managedGameCatalog.all().map { it.globalId }).filter { it.startsWith(prefix) }
                     else -> emptyList()
@@ -502,6 +537,14 @@ class KaGameCenterCommand(
             3 -> {
                 when (args[0].lowercase()) {
                     "create" -> completeCreate(args)
+                    "selector" -> (listOf("default") + managedGameCatalog.all()
+                        .filter {
+                            it.moduleId.equals(args[1], ignoreCase = true) ||
+                                it.globalId.equals(args[1], ignoreCase = true)
+                        }
+                        .map { it.selectorGroup })
+                        .distinct()
+                        .filter { it.startsWith(args[2], ignoreCase = true) }
                     else -> emptyList()
                 }
             }
@@ -532,6 +575,13 @@ class KaGameCenterCommand(
                     "maps" -> completeMaps(adminArgs)
                     "packet" -> completePacket(adminArgs)
                     "icon" -> completeIcon(adminArgs)
+                    "manage" -> {
+                        if (args.size != 3) return emptyList()
+                        managedGameCatalog.all()
+                            .map { it.globalId }
+                            .sortedBy { it.lowercase() }
+                            .filter { it.startsWith(args[2], ignoreCase = true) }
+                    }
                     in moduleAdminCommands.keys -> moduleAdminCommands[args[1].lowercase()]?.tabComplete(sender, args.drop(2).toTypedArray()).orEmpty()
                     "create" -> {
                         if (args.size != 3) return emptyList()

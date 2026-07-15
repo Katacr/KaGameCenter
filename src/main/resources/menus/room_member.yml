@@ -19,12 +19,12 @@ Bottom:
     transfer_owner:
       text: "{menu.button_transfer_owner}"
       actions:
-        - "kgc:transfer-owner {room.id} {player.uuid}"
+        - "{member.transfer_action}"
     kick:
       text: "{menu.button_kick_player}"
       actions:
-        - "kgc:kick-player {room.id} {player.uuid}"
+        - "{member.kick_action}"
   exit:
     text: "{menu.button_back}"
     actions:
-      - "kgc:open-room {room.id}"
+      - "{room.refresh_action}"

@@ -322,6 +322,7 @@ class RedisVelocityBridgeService(
         val gameId = definition?.id ?: configuredGame?.globalId ?: module.id
         val tags = buildList {
             add("module:${module.id}")
+            add("group:${configuredGame?.selectorGroup ?: "default"}")
             configuredGame?.let { add("managed:${it.globalId}") }
         }
         return VelocityRoomSnapshot(

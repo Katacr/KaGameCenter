@@ -5,6 +5,8 @@ import org.bukkit.GameMode
 import org.bukkit.Location
 import org.bukkit.World
 import org.bukkit.entity.Player
+import org.katacr.kaGameCenter.event.GameMapEditSessionClosedEvent
+import org.katacr.kaGameCenter.event.GameMapEditSessionStartedEvent
 import org.katacr.kaGameCenter.world.TemporaryWorldService
 import java.util.UUID
 
@@ -16,9 +18,11 @@ class MapEditorService(
 
     fun openEditor(player: Player, sessionId: String, templatePath: String, spawnResolver: (World) -> Location?): World? {
         leaveCurrentSession(player, restore = true)
+        var created = false
         val session = sessions.getOrPut(sessionId) {
             val worldName = buildWorldName(sessionId)
             val world = worldService.createEditorWorldFromTemplate(templatePath, worldName) ?: return null
+            created = true
             EditSession(sessionId, templatePath, null, world.name)
         }
         val world = Bukkit.getWorld(session.worldName) ?: worldService.createEditorWorldFromTemplate(templatePath, session.worldName) ?: return null
@@ -29,14 +33,21 @@ class MapEditorService(
         player.allowFlight = true
         player.isFlying = false
         player.teleport(target)
+        if (created) {
+            Bukkit.getPluginManager().callEvent(
+                GameMapEditSessionStartedEvent(session.id, world.name, player.uniqueId, player)
+            )
+        }
         return world
     }
 
     fun openEditorDirectory(player: Player, sessionId: String, templateDirectory: java.io.File, spawnResolver: (World) -> Location?): World? {
         leaveCurrentSession(player, restore = true)
+        var created = false
         val session = sessions.getOrPut(sessionId) {
             val worldName = buildWorldName(sessionId)
             val world = worldService.createEditorWorldFromDirectory(templateDirectory, worldName) ?: return null
+            created = true
             EditSession(sessionId, null, templateDirectory, world.name)
         }
         val world = Bukkit.getWorld(session.worldName) ?: worldService.createEditorWorldFromDirectory(templateDirectory, session.worldName) ?: return null
@@ -47,6 +58,11 @@ class MapEditorService(
         player.allowFlight = true
         player.isFlying = false
         player.teleport(target)
+        if (created) {
+            Bukkit.getPluginManager().callEvent(
+                GameMapEditSessionStartedEvent(session.id, world.name, player.uniqueId, player)
+            )
+        }
         return world
     }
 
@@ -71,22 +87,37 @@ class MapEditorService(
 
     fun closeSession(sessionId: String, save: Boolean = true, restoreEditors: Boolean = true): Boolean {
         val session = sessions.remove(sessionId) ?: return false
-        if (save) {
+        val editorIds = session.editors.keys.toList()
+        val saveSucceeded = if (save) {
             Bukkit.getWorld(session.worldName)?.let {
                 if (session.templateDirectory != null) {
                     worldService.saveWorldToDirectory(it, session.templateDirectory)
                 } else {
                     worldService.saveWorldToTemplate(it, session.templatePath)
                 }
-            }
+            } ?: false
+        } else {
+            true
         }
-        session.editors.keys.mapNotNull(Bukkit::getPlayer).forEach { player ->
-            playerSessions.remove(player.uniqueId)
+        editorIds.forEach(playerSessions::remove)
+        editorIds.mapNotNull(Bukkit::getPlayer).forEach { player ->
             if (restoreEditors) {
                 session.editors[player.uniqueId]?.restore(player)
             }
         }
-        return worldService.unloadAndDelete(session.worldName)
+        val worldCleanupSucceeded = worldService.unloadAndDelete(session.worldName)
+        Bukkit.getPluginManager().callEvent(
+            GameMapEditSessionClosedEvent(
+                session.id,
+                session.worldName,
+                editorIds,
+                save,
+                saveSucceeded,
+                restoreEditors,
+                worldCleanupSucceeded
+            )
+        )
+        return saveSucceeded && worldCleanupSucceeded
     }
 
     fun closeCurrentSession(player: Player, save: Boolean = true): Boolean {

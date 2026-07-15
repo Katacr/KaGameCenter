@@ -18,6 +18,11 @@ class GameManager(private val plugin: JavaPlugin) {
         definitions[definition.id.lowercase()] = definition
     }
 
+    /** 注销模块对应的默认游戏定义，避免模块卸载后仍可被旧 ID 查询。 */
+    fun unregister(id: String) {
+        definitions.remove(id.lowercase())
+    }
+
     fun get(id: String): GameDefinition? = definitions[id.lowercase()]
 
     fun all(): Collection<GameDefinition> = definitions.values
