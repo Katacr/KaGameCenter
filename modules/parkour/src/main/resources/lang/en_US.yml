@@ -92,6 +92,7 @@ parkour:
   editor_checkpoint_added: "§aAdded checkpoint: §f{0}"
   editor_buff_id_missing: "§cEnter a pickup id."
   editor_buff_added: "§aAdded speed pickup: §f{0}"
+  editor_capture_wrong_session: "§cOpen this managed game's editor world before using the bone capture tool."
   editor_previewed: "§aPreviewing this game's checkpoints and finish for 10 seconds."
   admin_help: |-
     §6Parkour Admin Commands

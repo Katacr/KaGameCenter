@@ -2,9 +2,11 @@ package org.katacr.kagamecenter.parkour
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
+import org.katacr.kaGameCenter.editor.EditorPointCaptureService
 import org.katacr.kaGameCenter.editor.MapEditorService
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.ManagedGameConfig
@@ -22,7 +24,8 @@ class ParkourManagedGameEditor(
     private val worldService: TemporaryWorldService,
     private val mapEditorService: MapEditorService,
     private val managedGameCatalog: ManagedGameCatalogService,
-    private val menuService: GameCenterMenuService
+    private val menuService: GameCenterMenuService,
+    private val pointCaptureService: EditorPointCaptureService
 ) : ModuleGameEditor {
     override val moduleId: String = "parkour"
 
@@ -34,9 +37,12 @@ class ParkourManagedGameEditor(
     ) {
         val map = configService.findMapByTemplate(sharedMapTemplate) ?: configService.current().firstMap()
         config.set("parkour.map-id", map?.id ?: sharedMapTemplate.substringAfterLast('/'))
+        config.set("parkour.next-checkpoint-index", 1)
+        config.set("parkour.next-buff-index", 1)
     }
 
     override fun openEditor(player: Player, game: ManagedGameConfig) {
+        pointCaptureService.cancel(player)
         val config = YamlConfiguration()
         val route = configService.readManagedRoute(game)
 
@@ -113,14 +119,16 @@ class ParkourManagedGameEditor(
                 player.sendMessage(Component.text(language.getMessage("parkour.editor_closed")))
             }
             "set-lobby" -> {
-                configService.saveManagedLobby(game, ParkourPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("parkour.editor_saved_field", language.getMessage("parkour.editor_field_lobby"))))
+                startPositionCapture(player, game, "parkour.editor_field_lobby") { currentGame, location ->
+                    configService.saveManagedLobby(currentGame, ParkourPoint.from(location))
+                }
+                return true
             }
             "set-start" -> {
-                configService.saveManagedStartSpawn(game, ParkourPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("parkour.editor_saved_field", language.getMessage("parkour.editor_field_start"))))
+                startPositionCapture(player, game, "parkour.editor_field_start") { currentGame, location ->
+                    configService.saveManagedStartSpawn(currentGame, ParkourPoint.from(location))
+                }
+                return true
             }
             "set-start-region" -> {
                 val selection = selectionService.getSelection(player) ?: return fail(player, "selection.not_ready")
@@ -135,11 +143,8 @@ class ParkourManagedGameEditor(
                 player.sendMessage(Component.text(language.getMessage("parkour.editor_saved_field", language.getMessage("parkour.editor_field_finish"))))
             }
             "add-checkpoint" -> {
-                val checkpointId = nextCheckpointId(game)
-                val selection = selectionService.getSelection(player) ?: return fail(player, "selection.not_ready")
-                configService.addManagedCheckpoint(game, checkpointId, selection, ParkourPoint.fromBlock(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("parkour.editor_checkpoint_added", checkpointId)))
+                startCheckpointCapture(player, game)
+                return true
             }
             "remove-checkpoint" -> {
                 val checkpointId = normalizeCheckpointId(variables["checkpoint_index"] ?: return fail(player, "parkour.editor_checkpoint_id_missing"))
@@ -149,10 +154,8 @@ class ParkourManagedGameEditor(
                 player.sendMessage(Component.text(language.getMessage("parkour.admin_checkpoint_removed", checkpointId)))
             }
             "add-speed-buff" -> {
-                val buffId = variables["buff_id"]?.takeIf { it.isNotBlank() } ?: return fail(player, "parkour.editor_buff_id_missing")
-                configService.addManagedSpeedBuff(game, buffId, ParkourPoint.fromBlock(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("parkour.editor_buff_added", buffId)))
+                startBuffCapture(player, game)
+                return true
             }
             "remove-buff" -> {
                 val buffId = variables["buff_id"]?.takeIf { it.isNotBlank() } ?: return fail(player, "parkour.editor_buff_id_missing")
@@ -199,13 +202,58 @@ class ParkourManagedGameEditor(
         mapEditorService.saveIfEditing(game.globalId)
     }
 
-    private fun nextCheckpointId(game: ManagedGameConfig): String {
-        val used = configService.readManagedRoute(game).checkpoints
-            .mapNotNull { it.id.toIntOrNull() }
-            .toSet()
-        var id = 1
-        while (id in used) id++
-        return id.toString()
+    /** 启动骨头右键位置采集，并持续覆盖指定单值坐标字段。 */
+    private fun startPositionCapture(
+        player: Player,
+        game: ManagedGameConfig,
+        fieldKey: String,
+        save: (ManagedGameConfig, Location) -> Unit
+    ) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+            save(currentGame, location)
+            capturePlayer.sendMessage(Component.text(language.getMessage("parkour.editor_saved_field", language.getMessage(fieldKey))))
+            true
+        }
+    }
+
+    /** 使用当前石斧选区和骨头右键位置连续创建检查点。 */
+    private fun startCheckpointCapture(player: Player, game: ManagedGameConfig) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) handler@{ capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@handler false
+            val selection = selectionService.getSelection(capturePlayer)
+            if (selection == null) {
+                capturePlayer.sendMessage(Component.text(language.getMessage("selection.not_ready")))
+                return@handler true
+            }
+            val checkpointId = configService.addNextManagedCheckpoint(currentGame, selection, ParkourPoint.fromBlock(location))
+            capturePlayer.sendMessage(Component.text(language.getMessage("parkour.editor_checkpoint_added", checkpointId)))
+            true
+        }
+    }
+
+    /** 使用骨头左键目标方块连续创建自动编号的速度道具点。 */
+    private fun startBuffCapture(player: Player, game: ManagedGameConfig) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginBlockCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginBlockCapture false
+            val buffId = configService.addNextManagedSpeedBuff(currentGame, ParkourPoint.fromBlock(location))
+            capturePlayer.sendMessage(Component.text(language.getMessage("parkour.editor_buff_added", buffId)))
+            true
+        }
+    }
+
+    /** 确认玩家仍在目标托管游戏的编辑世界，并读取最新配置实例。 */
+    private fun activeEditedGame(player: Player, globalId: String): ManagedGameConfig? {
+        if (mapEditorService.currentSessionId(player) != globalId) {
+            player.sendMessage(Component.text(language.getMessage("parkour.editor_capture_wrong_session")))
+            return null
+        }
+        return managedGameCatalog.get(globalId).also { current ->
+            if (current == null) player.sendMessage(Component.text(language.getMessage("parkour.editor_capture_wrong_session")))
+        }
     }
 
     private fun normalizeCheckpointId(value: String): String {

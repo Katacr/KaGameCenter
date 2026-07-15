@@ -77,7 +77,8 @@ class HungerModuleProvider : GameModuleProvider {
                 mapEditorService = context.mapEditorService,
                 managedGameCatalog = context.managedGameCatalog,
                 menuService = context.menuService,
-                mapPointService = context.managedMapPointService
+                mapPointService = context.managedMapPointService,
+                pointCaptureService = context.editorPointCaptureService
             )
         )
         context.registerListener(HungerListener(context.roomManager))

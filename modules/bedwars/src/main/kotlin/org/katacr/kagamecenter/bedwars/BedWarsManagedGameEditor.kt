@@ -3,9 +3,11 @@ package org.katacr.kagamecenter.bedwars
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.GameRule
+import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
+import org.katacr.kaGameCenter.editor.EditorPointCaptureService
 import org.katacr.kaGameCenter.editor.MapEditorService
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.ManagedGameConfig
@@ -22,7 +24,8 @@ class BedWarsManagedGameEditor(
     private val worldService: TemporaryWorldService,
     private val mapEditorService: MapEditorService,
     private val managedGameCatalog: ManagedGameCatalogService,
-    private val menuService: GameCenterMenuService
+    private val menuService: GameCenterMenuService,
+    private val pointCaptureService: EditorPointCaptureService
 ) : ModuleGameEditor {
     override val moduleId: String = "bedwars"
 
@@ -56,6 +59,7 @@ class BedWarsManagedGameEditor(
 
     /** 构造并打开 BedWars 地图编辑菜单。 */
     override fun openEditor(player: Player, game: ManagedGameConfig) {
+        pointCaptureService.cancel(player)
         val configured = configService.readManagedGame(game)
         val moduleConfig = configService.current()
         val blockRules = moduleConfig.blockRules
@@ -138,21 +142,29 @@ class BedWarsManagedGameEditor(
             "open-world" -> openWorld(player, game)
             "save-world" -> saveWorld(player, game)
             "close-world" -> closeWorld(player, game)
-            "set-lobby" -> savePoint(player, game, "bedwars.editor_field_lobby") {
-                configService.saveManagedLobby(game, BedWarsPoint.from(player.location))
-                true
+            "set-lobby" -> {
+                startPositionCapture(player, game, "bedwars.editor_field_lobby") { currentGame, location ->
+                    configService.saveManagedLobby(currentGame, BedWarsPoint.from(location))
+                }
+                return true
             }
-            "set-spectator" -> savePoint(player, game, "bedwars.editor_field_spectator") {
-                configService.saveManagedSpectatorSpawn(game, BedWarsPoint.from(player.location))
-                true
+            "set-spectator" -> {
+                startPositionCapture(player, game, "bedwars.editor_field_spectator") { currentGame, location ->
+                    configService.saveManagedSpectatorSpawn(currentGame, BedWarsPoint.from(location))
+                }
+                return true
             }
-            "set-void-y" -> savePoint(player, game, "bedwars.editor_field_void_y") {
-                configService.saveManagedVoidY(game, player.location.y)
-                true
+            "set-void-y" -> {
+                startPositionCapture(player, game, "bedwars.editor_field_void_y") { currentGame, location ->
+                    configService.saveManagedVoidY(currentGame, location.y)
+                }
+                return true
             }
-            "set-max-build-y" -> savePoint(player, game, "bedwars.editor_field_max_build_y") {
-                configService.saveManagedMaxBuildY(game, player.location.blockY)
-                true
+            "set-max-build-y" -> {
+                startPositionCapture(player, game, "bedwars.editor_field_max_build_y") { currentGame, location ->
+                    configService.saveManagedMaxBuildY(currentGame, location.blockY)
+                }
+                return true
             }
             "save-item-group" -> {
                 configService.saveManagedItemGroup(game, variable(variables, "item_group") ?: "default")
@@ -173,14 +185,35 @@ class BedWarsManagedGameEditor(
             "save-game-end-rules" -> saveGameEndRules(player, game, variables)
             "save-team" -> saveTeam(player, game, variables)
             "remove-team" -> removeTeam(player, game, variables)
-            "set-team-spawn" -> saveTeamPoint(player, game, variables, "spawn", "bedwars.editor_field_team_spawn")
-            "set-team-bed" -> saveTeamPoint(player, game, variables, "bed", "bedwars.editor_field_team_bed")
-            "set-team-kill-drops" -> saveTeamPoint(player, game, variables, "kill-drops", "bedwars.editor_field_team_kill_drops")
-            "set-team-shop" -> saveTeamPoint(player, game, variables, "shop", "bedwars.editor_field_team_shop")
-            "set-team-upgrade" -> saveTeamPoint(player, game, variables, "upgrade-shop", "bedwars.editor_field_team_upgrade")
-            "save-team-generator" -> saveGenerator(player, game, variables, teamScoped = true)
+            "set-team-spawn" -> {
+                startTeamPointCapture(player, game, variables, "spawn", "bedwars.editor_field_team_spawn", block = false)
+                return true
+            }
+            "set-team-bed" -> {
+                startTeamPointCapture(player, game, variables, "bed", "bedwars.editor_field_team_bed", block = true)
+                return true
+            }
+            "set-team-kill-drops" -> {
+                startTeamPointCapture(player, game, variables, "kill-drops", "bedwars.editor_field_team_kill_drops", block = false)
+                return true
+            }
+            "set-team-shop" -> {
+                startTeamPointCapture(player, game, variables, "shop", "bedwars.editor_field_team_shop", block = false)
+                return true
+            }
+            "set-team-upgrade" -> {
+                startTeamPointCapture(player, game, variables, "upgrade-shop", "bedwars.editor_field_team_upgrade", block = false)
+                return true
+            }
+            "save-team-generator" -> {
+                startGeneratorCapture(player, game, variables, teamScoped = true)
+                return true
+            }
             "remove-team-generator" -> removeGenerator(player, game, variables, teamScoped = true)
-            "save-generator" -> saveGenerator(player, game, variables, teamScoped = false)
+            "save-generator" -> {
+                startGeneratorCapture(player, game, variables, teamScoped = false)
+                return true
+            }
             "remove-generator" -> removeGenerator(player, game, variables, teamScoped = false)
             "validate" -> validate(player, game)
             "preview" -> preview(player, game)
@@ -457,23 +490,52 @@ class BedWarsManagedGameEditor(
         )))
     }
 
-    private fun saveTeamPoint(
+    /** 启动骨头右键位置采集，并持续覆盖指定单值坐标字段。 */
+    private fun startPositionCapture(
+        player: Player,
+        game: ManagedGameConfig,
+        fieldKey: String,
+        save: (ManagedGameConfig, Location) -> Unit
+    ) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+            save(currentGame, location)
+            capturePlayer.sendMessage(Component.text(language.getMessage("bedwars.editor_saved_field", language.getMessage(fieldKey))))
+            true
+        }
+    }
+
+    /** 按队伍字段类型启动骨头位置或方块采集，并保留 Dialog 中选择的队伍。 */
+    private fun startTeamPointCapture(
         player: Player,
         game: ManagedGameConfig,
         variables: Map<String, String>,
         field: String,
-        fieldKey: String
+        fieldKey: String,
+        block: Boolean
     ) {
         val teamId = variable(variables, "team_id") ?: return missing(player, "bedwars.editor_team_id_missing")
-        if (!configService.saveManagedTeamPoint(game, teamId, field, BedWarsPoint.from(player.location))) {
+        if (configService.readManagedGame(game).teams.none { it.id.equals(teamId, ignoreCase = true) }) {
             fail(player, "bedwars.editor_team_missing", teamId)
             return
         }
-        mapEditorService.saveIfEditing(game.globalId)
-        player.sendMessage(Component.text(language.getMessage("bedwars.editor_saved_field", language.getMessage(fieldKey))))
+        if (activeEditedGame(player, game.globalId) == null) return
+        val handler: (Player, Location) -> Boolean = handler@{ capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@handler false
+            if (!configService.saveManagedTeamPoint(currentGame, teamId, field, BedWarsPoint.from(location))) {
+                fail(capturePlayer, "bedwars.editor_team_missing", teamId)
+                return@handler false
+            }
+            capturePlayer.sendMessage(Component.text(language.getMessage("bedwars.editor_saved_field", language.getMessage(fieldKey))))
+            true
+        }
+        if (block) pointCaptureService.beginBlockCapture(player, moduleId, handler)
+        else pointCaptureService.beginPositionCapture(player, moduleId, handler)
     }
 
-    private fun saveGenerator(
+    /** 启动骨头右键生成器位置采集，并保留 Dialog 中的队伍、类型和刷新间隔。 */
+    private fun startGeneratorCapture(
         player: Player,
         game: ManagedGameConfig,
         variables: Map<String, String>,
@@ -487,20 +549,30 @@ class BedWarsManagedGameEditor(
             ?: return missing(player, "bedwars.editor_generator_type_invalid")
         val interval = variable(variables, "generator_interval")?.toIntOrNull()?.coerceIn(1, 72_000)
             ?: return missing(player, "bedwars.editor_number_invalid")
-        val point = BedWarsPoint.from(player.location)
-        val savedId = if (teamScoped) {
-            val teamId = variable(variables, "team_id")
-                ?: return missing(player, "bedwars.editor_team_id_missing")
-            configService.upsertManagedTeamGenerator(game, teamId, generatorId, type, point, interval)
-        } else {
-            configService.upsertManagedGenerator(game, generatorId, type, point, interval)
-        } ?: return missing(player, "bedwars.editor_parent_missing")
-        changed(
-            player,
-            game,
-            if (teamScoped) "bedwars.editor_team_generator_saved" else "bedwars.editor_generator_saved",
-            savedId
-        )
+        val teamId = if (teamScoped) variable(variables, "team_id")
+            ?: return missing(player, "bedwars.editor_team_id_missing") else null
+        if (teamId != null && configService.readManagedGame(game).teams.none { it.id.equals(teamId, ignoreCase = true) }) {
+            return missing(player, "bedwars.editor_parent_missing")
+        }
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+            val point = BedWarsPoint.from(location)
+            val savedId = if (teamId != null) {
+                configService.upsertManagedTeamGenerator(currentGame, teamId, generatorId, type, point, interval)
+            } else {
+                configService.upsertManagedGenerator(currentGame, generatorId, type, point, interval)
+            }
+            if (savedId == null) {
+                missing(capturePlayer, "bedwars.editor_parent_missing")
+                return@beginPositionCapture false
+            }
+            capturePlayer.sendMessage(Component.text(language.getMessage(
+                if (teamScoped) "bedwars.editor_team_generator_saved" else "bedwars.editor_generator_saved",
+                savedId
+            )))
+            true
+        }
     }
 
     private fun removeGenerator(
@@ -528,10 +600,15 @@ class BedWarsManagedGameEditor(
         )))
     }
 
-    private fun savePoint(player: Player, game: ManagedGameConfig, fieldKey: String, save: () -> Boolean) {
-        if (!save()) return
-        mapEditorService.saveIfEditing(game.globalId)
-        player.sendMessage(Component.text(language.getMessage("bedwars.editor_saved_field", language.getMessage(fieldKey))))
+    /** 确认玩家仍在目标托管游戏的编辑世界，并读取最新配置实例。 */
+    private fun activeEditedGame(player: Player, globalId: String): ManagedGameConfig? {
+        if (mapEditorService.currentSessionId(player) != globalId) {
+            player.sendMessage(Component.text(language.getMessage("bedwars.editor_capture_wrong_session")))
+            return null
+        }
+        return managedGameCatalog.get(globalId).also { current ->
+            if (current == null) player.sendMessage(Component.text(language.getMessage("bedwars.editor_capture_wrong_session")))
+        }
     }
 
     private fun changed(player: Player, game: ManagedGameConfig, key: String, id: String) {

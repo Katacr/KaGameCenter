@@ -107,6 +107,7 @@ hunger:
   editor_deathmatch_added: "§aAdded deathmatch spawn: §f{0}"
   editor_deathmatch_removed: "§aRemoved deathmatch spawn: §f{0}"
   editor_chest_added: "§aAdded supply chest: §f{0}"
+  editor_capture_wrong_session: "§cOpen this managed game's editor world before using the bone capture tool."
   editor_chest_removed: "§aRemoved supply chest: §f{0}"
   editor_previewed: "§aPreviewing lobby, region, spawns, and chests for 10 seconds."
 

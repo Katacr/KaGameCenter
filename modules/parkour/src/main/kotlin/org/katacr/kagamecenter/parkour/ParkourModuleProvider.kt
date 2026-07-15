@@ -38,7 +38,8 @@ class ParkourModuleProvider : GameModuleProvider {
                 worldService = context.worldService,
                 mapEditorService = context.mapEditorService,
                 managedGameCatalog = context.managedGameCatalog,
-                menuService = context.menuService
+                menuService = context.menuService,
+                pointCaptureService = context.editorPointCaptureService
             )
         )
         context.registerListener(ParkourListener(context.roomManager))

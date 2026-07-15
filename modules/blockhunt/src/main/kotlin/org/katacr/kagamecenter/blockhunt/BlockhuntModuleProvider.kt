@@ -51,26 +51,25 @@ class BlockhuntModuleProvider : GameModuleProvider {
                 resultService = context.resultService
             )
         )
+        val editor = BlockhuntManagedGameEditor(
+            configService = configService,
+            language = language,
+            selectionService = context.selectionService,
+            packetService = context.packetService,
+            worldService = context.worldService,
+            mapEditorService = context.mapEditorService,
+            managedGameCatalog = context.managedGameCatalog,
+            menuService = context.menuService,
+            pointCaptureService = context.editorPointCaptureService
+        )
+        context.registerGameEditor(editor)
         context.registerAdminCommand(
             BlockhuntAdminCommand(
                 configService = configService,
-                selectionService = context.selectionService,
-                packetService = context.packetService,
                 language = language,
-                mapEditorService = context.mapEditorService,
-                managedGameCatalog = context.managedGameCatalog
-            )
-        )
-        context.registerGameEditor(
-            BlockhuntManagedGameEditor(
-                configService = configService,
-                language = language,
-                selectionService = context.selectionService,
-                packetService = context.packetService,
-                worldService = context.worldService,
                 mapEditorService = context.mapEditorService,
                 managedGameCatalog = context.managedGameCatalog,
-                menuService = context.menuService
+                editor = editor
             )
         )
         context.registerListener(BlockhuntListener(context.roomManager))

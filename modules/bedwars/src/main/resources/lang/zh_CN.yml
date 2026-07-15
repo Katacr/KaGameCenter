@@ -590,6 +590,7 @@ bedwars:
   editor_saved: "编辑世界已保存。"
   editor_closed: "编辑世界已保存并关闭。"
   editor_previewed: "已预览大厅、队伍、床、回收点、商店和生成器点位。"
+  editor_capture_wrong_session: "§c请先打开当前小游戏的编辑世界，再使用骨头采点。"
   editor_saved_field: "已保存：{0}"
   editor_team_saved: "队伍 {0} 已保存。"
   editor_team_removed: "队伍 {0} 已删除。"

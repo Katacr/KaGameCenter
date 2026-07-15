@@ -73,6 +73,7 @@ blockhunt:
   editor_button_preview: "§e预览区域/道具点"
   editor_private_snapshot_failed: "§c创建私有地图快照失败。"
   editor_open_failed: "§c打开私有编辑世界失败。"
+  editor_menu_open_failed: "§e编辑菜单无法打开。可使用 /kgc admin blockhunt openworld <游戏ID> 直接进入私有编辑世界。"
   editor_opened: "§a已打开私有编辑世界: §f{0}"
   editor_saved: "§a已保存私有地图快照。"
   editor_save_failed: "§c保存私有地图快照失败。"
@@ -85,17 +86,28 @@ blockhunt:
   editor_field_play_region: "游戏区域"
   editor_item_id_missing: "§c请输入道具点编号。"
   editor_item_added: "§a已添加道具刷新点: §f{0}"
+  editor_capture_wrong_session: "§c请先打开当前小游戏的编辑世界，再使用骨头采点。"
   editor_item_removed: "§a已删除道具刷新点: §f{0}"
   editor_item_missing: "§c未找到道具刷新点: {0}"
   editor_previewed: "§a已预览游戏区域与道具点 10 秒。"
   admin_reloaded: "§a方块躲猫猫配置已重载。"
+  admin_list_empty: "§e当前没有方块躲猫猫托管游戏。"
+  admin_list_header: "§6方块躲猫猫托管游戏: §f{0}"
+  admin_list_entry: "§7- §f{0} §8| §e{1} §8| §7启用={2} 私有快照={3}"
+  admin_game_missing: "§c未找到方块躲猫猫托管游戏: {0}"
+  admin_editor_required: "§c请先使用 edit 或 openworld 进入方块躲猫猫私有编辑世界。"
   admin_help: |-
     §6方块躲猫猫管理指令
     §e/{0} admin blockhunt reload §7重载配置
-    §e/{0} admin blockhunt setlobby §7设置当前托管游戏大厅
-    §e/{0} admin blockhunt sethunter §7设置猎人出生点
-    §e/{0} admin blockhunt sethider §7设置躲藏者出生点
+    §e/{0} admin blockhunt list §7列出托管游戏
+    §e/{0} admin blockhunt edit <游戏ID> §7重新打开编辑菜单
+    §e/{0} admin blockhunt openworld <游戏ID> §7直接进入私有编辑世界
+    §e/{0} admin blockhunt setlobby §7启动大厅位置采集
+    §e/{0} admin blockhunt sethunter §7启动猎人出生点采集
+    §e/{0} admin blockhunt sethider §7启动躲藏者出生点采集
     §e/{0} admin blockhunt setregion §7用当前选区设置游戏区域
-    §e/{0} admin blockhunt additem [编号] §7在当前位置添加道具刷新点
+    §e/{0} admin blockhunt additem §7启动道具刷新点采集
     §e/{0} admin blockhunt removeitem <编号> §7删除道具刷新点
+    §e/{0} admin blockhunt save §7保存私有地图快照
+    §e/{0} admin blockhunt close §7保存并关闭编辑世界
     §e/{0} admin blockhunt preview §7预览当前游戏配置

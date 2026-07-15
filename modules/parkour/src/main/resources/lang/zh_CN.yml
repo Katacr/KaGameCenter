@@ -92,6 +92,7 @@ parkour:
   editor_checkpoint_added: "§a已添加检查点: §f{0}"
   editor_buff_id_missing: "§c请输入道具编号。"
   editor_buff_added: "§a已添加速度道具: §f{0}"
+  editor_capture_wrong_session: "§c请先打开当前小游戏的编辑世界，再使用骨头采点。"
   editor_previewed: "§a已预览当前游戏的检查点和终点 10 秒。"
   admin_help: |-
     §6跑酷管理指令

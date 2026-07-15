@@ -2,9 +2,11 @@ package org.katacr.kagamecenter.tntwars
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
+import org.katacr.kaGameCenter.editor.EditorPointCaptureService
 import org.katacr.kaGameCenter.editor.MapEditorService
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.ManagedGameConfig
@@ -22,7 +24,8 @@ class TntWarsManagedGameEditor(
     private val worldService: TemporaryWorldService,
     private val mapEditorService: MapEditorService,
     private val managedGameCatalog: ManagedGameCatalogService,
-    private val menuService: GameCenterMenuService
+    private val menuService: GameCenterMenuService,
+    private val pointCaptureService: EditorPointCaptureService
 ) : ModuleGameEditor {
     override val moduleId: String = "tntwars"
 
@@ -37,6 +40,7 @@ class TntWarsManagedGameEditor(
     }
 
     override fun openEditor(player: Player, game: ManagedGameConfig) {
+        pointCaptureService.cancel(player)
         val menu = YamlConfiguration()
         val config = configService.readManagedGame(game)
 
@@ -99,24 +103,28 @@ class TntWarsManagedGameEditor(
                 player.sendMessage(Component.text(language.getMessage("tntwars.editor_closed")))
             }
             "set-lobby" -> {
-                configService.saveManagedLobby(game, TntWarsPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("tntwars.editor_saved_field", language.getMessage("tntwars.editor_field_lobby"))))
+                startPositionCapture(player, game, "tntwars.editor_field_lobby") { currentGame, location ->
+                    configService.saveManagedLobby(currentGame, TntWarsPoint.from(location))
+                }
+                return true
             }
             "set-spectator" -> {
-                configService.saveManagedSpectatorSpawn(game, TntWarsPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("tntwars.editor_saved_field", language.getMessage("tntwars.editor_field_spectator"))))
+                startPositionCapture(player, game, "tntwars.editor_field_spectator") { currentGame, location ->
+                    configService.saveManagedSpectatorSpawn(currentGame, TntWarsPoint.from(location))
+                }
+                return true
             }
             "set-red-spawn" -> {
-                configService.saveManagedTeamSpawn(game, TntWarsTeam.RED, TntWarsPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("tntwars.editor_saved_field", language.getMessage("tntwars.editor_field_red_spawn"))))
+                startPositionCapture(player, game, "tntwars.editor_field_red_spawn") { currentGame, location ->
+                    configService.saveManagedTeamSpawn(currentGame, TntWarsTeam.RED, TntWarsPoint.from(location))
+                }
+                return true
             }
             "set-blue-spawn" -> {
-                configService.saveManagedTeamSpawn(game, TntWarsTeam.BLUE, TntWarsPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("tntwars.editor_saved_field", language.getMessage("tntwars.editor_field_blue_spawn"))))
+                startPositionCapture(player, game, "tntwars.editor_field_blue_spawn") { currentGame, location ->
+                    configService.saveManagedTeamSpawn(currentGame, TntWarsTeam.BLUE, TntWarsPoint.from(location))
+                }
+                return true
             }
             "set-region" -> {
                 val selection = selectionService.getSelection(player) ?: return fail(player, "selection.not_ready")
@@ -125,9 +133,10 @@ class TntWarsManagedGameEditor(
                 player.sendMessage(Component.text(language.getMessage("tntwars.editor_saved_field", language.getMessage("tntwars.editor_field_region"))))
             }
             "set-void-y" -> {
-                configService.saveManagedVoidY(game, player.location.y)
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("tntwars.editor_saved_field", language.getMessage("tntwars.editor_field_void_y"))))
+                startPositionCapture(player, game, "tntwars.editor_field_void_y") { currentGame, location ->
+                    configService.saveManagedVoidY(currentGame, location.y)
+                }
+                return true
             }
             "preview" -> preview(player, game)
             else -> return false
@@ -150,6 +159,33 @@ class TntWarsManagedGameEditor(
 
     private fun saveEditingWorld(game: ManagedGameConfig) {
         mapEditorService.saveIfEditing(game.globalId)
+    }
+
+    /** 启动骨头右键位置采集，并持续覆盖指定单值坐标字段。 */
+    private fun startPositionCapture(
+        player: Player,
+        game: ManagedGameConfig,
+        fieldKey: String,
+        save: (ManagedGameConfig, Location) -> Unit
+    ) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+            save(currentGame, location)
+            capturePlayer.sendMessage(Component.text(language.getMessage("tntwars.editor_saved_field", language.getMessage(fieldKey))))
+            true
+        }
+    }
+
+    /** 确认玩家仍在目标托管游戏的编辑世界，并读取最新配置实例。 */
+    private fun activeEditedGame(player: Player, globalId: String): ManagedGameConfig? {
+        if (mapEditorService.currentSessionId(player) != globalId) {
+            player.sendMessage(Component.text(language.getMessage("tntwars.editor_capture_wrong_session")))
+            return null
+        }
+        return managedGameCatalog.get(globalId).also { current ->
+            if (current == null) player.sendMessage(Component.text(language.getMessage("tntwars.editor_capture_wrong_session")))
+        }
     }
 
     private fun preview(player: Player, game: ManagedGameConfig) {
@@ -181,4 +217,3 @@ class TntWarsManagedGameEditor(
         config.set("Bottom.buttons.$key.actions", listOf(action))
     }
 }
-

@@ -2,9 +2,11 @@ package org.katacr.kagamecenter.blockhunt
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
+import org.katacr.kaGameCenter.editor.EditorPointCaptureService
 import org.katacr.kaGameCenter.editor.MapEditorService
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.ManagedGameConfig
@@ -22,7 +24,8 @@ class BlockhuntManagedGameEditor(
     private val worldService: TemporaryWorldService,
     private val mapEditorService: MapEditorService,
     private val managedGameCatalog: ManagedGameCatalogService,
-    private val menuService: GameCenterMenuService
+    private val menuService: GameCenterMenuService,
+    private val pointCaptureService: EditorPointCaptureService
 ) : ModuleGameEditor {
     override val moduleId: String = "blockhunt"
 
@@ -34,9 +37,16 @@ class BlockhuntManagedGameEditor(
     ) {
         val map = configService.findMapByTemplate(sharedMapTemplate) ?: configService.current().firstMap()
         config.set("blockhunt.map-id", map?.id ?: sharedMapTemplate.substringAfterLast('/'))
+        config.set("blockhunt.next-item-index", 1)
     }
 
     override fun openEditor(player: Player, game: ManagedGameConfig) {
+        openEditorMenu(player, game, openWorldOnFailure = true)
+    }
+
+    /** 构造编辑菜单；仅首次入口失败时允许直接打开私有编辑世界。 */
+    private fun openEditorMenu(player: Player, game: ManagedGameConfig, openWorldOnFailure: Boolean) {
+        pointCaptureService.cancel(player)
         val menu = YamlConfiguration()
         val config = configService.readManagedGame(game)
 
@@ -74,22 +84,15 @@ class BlockhuntManagedGameEditor(
         button(menu, "preview", language.getMessage("blockhunt.editor_button_preview"), "kgc:module-game-action ${game.globalId} preview")
         menu.set("Bottom.exit.text", language.getMessage("menu.button_back"))
         menu.set("Bottom.exit.actions", listOf("kgc:open-admin-managed-games"))
-        menuService.openExternalConfig(player, menu, "kagamecenter:blockhunt-editor:${game.globalId}")
+        if (!menuService.openExternalConfig(player, menu, "kagamecenter:blockhunt-editor:${game.globalId}")) {
+            player.sendMessage(Component.text(language.getMessage("blockhunt.editor_menu_open_failed")))
+            if (openWorldOnFailure) openWorld(player, game)
+        }
     }
 
     override fun handleAction(player: Player, game: ManagedGameConfig, action: String, variables: Map<String, String>): Boolean {
         when (action.lowercase()) {
-            "open-world" -> {
-                ensurePrivateSnapshot(game) || return fail(player, "blockhunt.editor_private_snapshot_failed")
-                val config = configService.readManagedGame(game)
-                val world = mapEditorService.openEditorDirectory(player, game.globalId, game.runtimeMapFolder) { editWorld ->
-                    config.lobby?.toLocation(editWorld)
-                        ?: config.hiderSpawn?.toLocation(editWorld)
-                        ?: editWorld.spawnLocation
-                }
-                if (world == null) return fail(player, "blockhunt.editor_open_failed")
-                player.sendMessage(Component.text(language.getMessage("blockhunt.editor_opened", world.name)))
-            }
+            "open-world" -> if (!openWorld(player, game)) return false
             "save-world" -> {
                 val saved = mapEditorService.saveIfEditing(game.globalId)
                 if (!saved) return fail(player, "blockhunt.editor_save_failed")
@@ -101,19 +104,22 @@ class BlockhuntManagedGameEditor(
                 player.sendMessage(Component.text(language.getMessage("blockhunt.editor_closed")))
             }
             "set-lobby" -> {
-                configService.saveManagedLobby(game, BlockhuntPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("blockhunt.editor_saved_field", language.getMessage("blockhunt.editor_field_lobby"))))
+                startPositionCapture(player, game, "blockhunt.editor_field_lobby") { currentGame, location ->
+                    configService.saveManagedLobby(currentGame, BlockhuntPoint.from(location))
+                }
+                return true
             }
             "set-hunter-spawn" -> {
-                configService.saveManagedHunterSpawn(game, BlockhuntPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("blockhunt.editor_saved_field", language.getMessage("blockhunt.editor_field_hunter_spawn"))))
+                startPositionCapture(player, game, "blockhunt.editor_field_hunter_spawn") { currentGame, location ->
+                    configService.saveManagedHunterSpawn(currentGame, BlockhuntPoint.from(location))
+                }
+                return true
             }
             "set-hider-spawn" -> {
-                configService.saveManagedHiderSpawn(game, BlockhuntPoint.from(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("blockhunt.editor_saved_field", language.getMessage("blockhunt.editor_field_hider_spawn"))))
+                startPositionCapture(player, game, "blockhunt.editor_field_hider_spawn") { currentGame, location ->
+                    configService.saveManagedHiderSpawn(currentGame, BlockhuntPoint.from(location))
+                }
+                return true
             }
             "set-play-region" -> {
                 val selection = selectionService.getSelection(player) ?: return fail(player, "selection.not_ready")
@@ -122,10 +128,8 @@ class BlockhuntManagedGameEditor(
                 player.sendMessage(Component.text(language.getMessage("blockhunt.editor_saved_field", language.getMessage("blockhunt.editor_field_play_region"))))
             }
             "add-item-spawn" -> {
-                val id = variables["item_id"]?.takeIf { it.isNotBlank() } ?: nextItemId(game)
-                configService.addManagedItemSpawn(game, id, BlockhuntPoint.fromBlock(player.location))
-                saveEditingWorld(game)
-                player.sendMessage(Component.text(language.getMessage("blockhunt.editor_item_added", id)))
+                startItemCapture(player, game)
+                return true
             }
             "remove-item-spawn" -> {
                 val id = variables["item_id"]?.takeIf { it.isNotBlank() } ?: return fail(player, "blockhunt.editor_item_id_missing")
@@ -139,7 +143,7 @@ class BlockhuntManagedGameEditor(
         }
 
         val latest = managedGameCatalog.get(game.globalId) ?: game
-        openEditor(player, latest)
+        openEditorMenu(player, latest, openWorldOnFailure = false)
         return true
     }
 
@@ -153,12 +157,60 @@ class BlockhuntManagedGameEditor(
         return true
     }
 
+    /** 打开指定托管游戏的私有编辑世界，供菜单和管理命令复用。 */
+    fun openWorld(player: Player, game: ManagedGameConfig): Boolean {
+        if (!ensurePrivateSnapshot(game)) return fail(player, "blockhunt.editor_private_snapshot_failed")
+        val config = configService.readManagedGame(game)
+        val world = mapEditorService.openEditorDirectory(player, game.globalId, game.runtimeMapFolder) { editWorld ->
+            config.lobby?.toLocation(editWorld)
+                ?: config.hiderSpawn?.toLocation(editWorld)
+                ?: editWorld.spawnLocation
+        }
+        if (world == null) return fail(player, "blockhunt.editor_open_failed")
+        player.sendMessage(Component.text(language.getMessage("blockhunt.editor_opened", world.name)))
+        return true
+    }
+
     private fun saveEditingWorld(game: ManagedGameConfig) {
         mapEditorService.saveIfEditing(game.globalId)
     }
 
-    private fun nextItemId(game: ManagedGameConfig): String {
-        return "item_${configService.readManagedGame(game).itemSpawns.size + 1}"
+    /** 启动骨头右键位置采集，并持续覆盖指定单值坐标字段。 */
+    private fun startPositionCapture(
+        player: Player,
+        game: ManagedGameConfig,
+        fieldKey: String,
+        save: (ManagedGameConfig, Location) -> Unit
+    ) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+            save(currentGame, location)
+            capturePlayer.sendMessage(Component.text(language.getMessage("blockhunt.editor_saved_field", language.getMessage(fieldKey))))
+            true
+        }
+    }
+
+    /** 启动骨头右键连续添加道具刷新位置，并由配置服务分配稳定递增编号。 */
+    private fun startItemCapture(player: Player, game: ManagedGameConfig) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+            val id = configService.addNextManagedItemSpawn(currentGame, BlockhuntPoint.from(location))
+            capturePlayer.sendMessage(Component.text(language.getMessage("blockhunt.editor_item_added", id)))
+            true
+        }
+    }
+
+    /** 确认玩家仍在目标托管游戏的编辑世界，并读取最新配置实例。 */
+    private fun activeEditedGame(player: Player, globalId: String): ManagedGameConfig? {
+        if (mapEditorService.currentSessionId(player) != globalId) {
+            player.sendMessage(Component.text(language.getMessage("blockhunt.editor_capture_wrong_session")))
+            return null
+        }
+        return managedGameCatalog.get(globalId).also { current ->
+            if (current == null) player.sendMessage(Component.text(language.getMessage("blockhunt.editor_capture_wrong_session")))
+        }
     }
 
     private fun preview(player: Player, game: ManagedGameConfig) {

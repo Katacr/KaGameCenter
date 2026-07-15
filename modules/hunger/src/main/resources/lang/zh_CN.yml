@@ -107,6 +107,7 @@ hunger:
   editor_deathmatch_added: "§a已添加死亡竞赛出生点: §f{0}"
   editor_deathmatch_removed: "§a已删除死亡竞赛出生点: §f{0}"
   editor_chest_added: "§a已添加补给箱: §f{0}"
+  editor_capture_wrong_session: "§c请先打开当前小游戏的编辑世界，再使用骨头采点。"
   editor_chest_removed: "§a已删除补给箱: §f{0}"
   editor_previewed: "§a已预览大厅、区域、出生点和补给箱 10 秒。"
 

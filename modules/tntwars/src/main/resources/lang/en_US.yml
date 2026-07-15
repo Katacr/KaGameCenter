@@ -66,3 +66,4 @@ tntwars:
   editor_field_region: "Play region"
   editor_field_void_y: "Void Y"
   editor_previewed: "§aPreviewed TNT Wars region and spawns."
+  editor_capture_wrong_session: "§cOpen this managed game's editor world before using the bone capture tool."

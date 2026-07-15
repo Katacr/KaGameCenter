@@ -186,6 +186,30 @@ class ParkourConfigService(
         }
     }
 
+    /** 自动分配单调递增的检查点编号，并保存当前选区和复活位置。 */
+    fun addNextManagedCheckpoint(game: ManagedGameConfig, region: RegionSelection, respawn: ParkourPoint): String {
+        val managedConfig = YamlConfiguration.loadConfiguration(game.file)
+        val checkpoints = managedConfig.getMapList("parkour.checkpoints")
+            .map { linkedMapOf<String, Any?>(*it.entries.map { entry -> entry.key.toString() to entry.value }.toTypedArray()) }
+            .toMutableList()
+        val existingIds = checkpoints.mapNotNull { it["id"]?.toString() }
+        val inferred = existingIds.mapNotNull(String::toIntOrNull).maxOrNull()?.plus(1) ?: 1
+        var index = maxOf(managedConfig.getInt("parkour.next-checkpoint-index", 1), inferred).coerceAtLeast(1)
+        while (existingIds.any { it == index.toString() }) index++
+        val id = index.toString()
+        checkpoints.add(linkedMapOf(
+            "id" to id,
+            "display-name" to id,
+            "region" to regionToMap(region),
+            "respawn" to pointToMap(respawn),
+            "glow-region" to regionToMap(region)
+        ))
+        managedConfig.set("parkour.checkpoints", checkpoints)
+        managedConfig.set("parkour.next-checkpoint-index", index + 1)
+        managedConfig.save(game.file)
+        return id
+    }
+
     fun removeManagedCheckpoint(game: ManagedGameConfig, checkpointId: String): Boolean {
         val managedConfig = YamlConfiguration.loadConfiguration(game.file)
         val checkpoints = managedConfig.getMapList("parkour.checkpoints").toMutableList()
@@ -215,6 +239,34 @@ class ParkourConfigService(
             if (existingIndex >= 0) buffs[existingIndex] = buff else buffs.add(buff)
             managedConfig.set("parkour.buffs", buffs)
         }
+    }
+
+    /** 自动分配单调递增的速度道具编号并保存目标方块位置。 */
+    fun addNextManagedSpeedBuff(game: ManagedGameConfig, point: ParkourPoint): String {
+        val managedConfig = YamlConfiguration.loadConfiguration(game.file)
+        val buffs = managedConfig.getMapList("parkour.buffs")
+            .map { linkedMapOf<String, Any?>(*it.entries.map { entry -> entry.key.toString() to entry.value }.toTypedArray()) }
+            .toMutableList()
+        val existingIds = buffs.mapNotNull { it["id"]?.toString() }
+        val inferred = existingIds.mapNotNull { id ->
+            id.takeIf { it.startsWith("speed_", ignoreCase = true) }?.substringAfterLast('_')?.toIntOrNull()
+        }.maxOrNull()?.plus(1) ?: 1
+        var index = maxOf(managedConfig.getInt("parkour.next-buff-index", 1), inferred).coerceAtLeast(1)
+        while (existingIds.any { it.equals("speed_$index", ignoreCase = true) }) index++
+        val id = "speed_$index"
+        buffs.add(linkedMapOf(
+            "id" to id,
+            "type" to "speed2",
+            "point" to pointToMap(point),
+            "color" to "aqua",
+            "duration-seconds" to 10,
+            "amplifier" to 1,
+            "respawn-seconds" to 15
+        ))
+        managedConfig.set("parkour.buffs", buffs)
+        managedConfig.set("parkour.next-buff-index", index + 1)
+        managedConfig.save(game.file)
+        return id
     }
 
     fun removeManagedBuff(game: ManagedGameConfig, buffId: String): Boolean {

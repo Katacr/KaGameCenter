@@ -68,7 +68,8 @@ class BedWarsModuleProvider : GameModuleProvider {
             context.worldService,
             context.mapEditorService,
             context.managedGameCatalog,
-            context.menuService
+            context.menuService,
+            context.editorPointCaptureService
         )
         context.registerAdminCommand(
             BedWarsAdminCommand(

@@ -387,11 +387,11 @@ class KaGameCenter : JavaPlugin() {
         val logo = """
             §e________________________________________________________
             §b
-            §b  _  __       §3 ____                         §b
-            §b | |/ / __ _  §3/ ___| __ _ _ __ ___   ___    §b
+            §b  _  __       §3  ____                         §b
+            §b | |/ / __ _  §3 / ___| __ _ _ __ ___   ___    §b
             §b | ' / / _` | §3| |  _ / _` | '_ ` _ \ / _ \   §b
             §b | . \| (_| | §3| |_| | (_| | | | | | |  __/   §b
-            §b |_|\_\\__,_| §3\____|\__,_|_| |_| |_|\___|   §b
+            §b |_|\_\\__,_| §3 \____|\__,_|_| |_| |_|\___|   §b
             §b
             ${languageManager.getMessage("startup.version", version)}
             ${languageManager.getMessage("startup.minecraft", gameVersion)}

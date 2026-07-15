@@ -2,6 +2,7 @@ package org.katacr.kagamecenter.skywars
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
@@ -97,18 +98,27 @@ class SkyWarsManagedGameEditor(
                 if (!mapEditorService.closeSession(game.globalId, save = true, restoreEditors = true)) return fail(player, "skywars.editor_close_failed")
                 player.sendMessage(Component.text(language.getMessage("skywars.editor_closed")))
             }
-            "set-lobby" -> saveField(player, game, "skywars.editor_field_lobby") {
-                configService.saveManagedLobby(game, mapPointService.fromLocation(player.location))
+            "set-lobby" -> {
+                startPositionCapture(player, game, "skywars.editor_field_lobby") { currentGame, location ->
+                    configService.saveManagedLobby(currentGame, mapPointService.fromLocation(location))
+                }
+                return true
             }
-            "set-spectator" -> saveField(player, game, "skywars.editor_field_spectator") {
-                configService.saveManagedSpectatorSpawn(game, mapPointService.fromLocation(player.location))
+            "set-spectator" -> {
+                startPositionCapture(player, game, "skywars.editor_field_spectator") { currentGame, location ->
+                    configService.saveManagedSpectatorSpawn(currentGame, mapPointService.fromLocation(location))
+                }
+                return true
             }
             "set-play-region" -> {
                 val selection = selectionService.getSelection(player) ?: return fail(player, "selection.not_ready")
                 saveField(player, game, "skywars.editor_field_play_region") { configService.saveManagedPlayRegion(game, selection) }
             }
-            "set-void-y" -> saveField(player, game, "skywars.editor_field_void_y") {
-                configService.saveManagedVoidY(game, player.location.y)
+            "set-void-y" -> {
+                startPositionCapture(player, game, "skywars.editor_field_void_y") { currentGame, location ->
+                    configService.saveManagedVoidY(currentGame, location.y)
+                }
+                return true
             }
             "set-team-size" -> {
                 val size = variable(variables, "team_size")?.toIntOrNull()?.coerceIn(1, 8)
@@ -156,6 +166,22 @@ class SkyWarsManagedGameEditor(
         save()
         mapEditorService.saveIfEditing(game.globalId)
         player.sendMessage(Component.text(language.getMessage("skywars.editor_saved_field", language.getMessage(fieldKey))))
+    }
+
+    /** 启动骨头右键位置采集，并持续覆盖指定单值坐标字段。 */
+    private fun startPositionCapture(
+        player: Player,
+        game: ManagedGameConfig,
+        fieldKey: String,
+        save: (ManagedGameConfig, Location) -> Unit
+    ) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+            save(currentGame, location)
+            capturePlayer.sendMessage(Component.text(language.getMessage("skywars.editor_saved_field", language.getMessage(fieldKey))))
+            true
+        }
     }
 
     private fun startIslandCapture(player: Player, game: ManagedGameConfig) {

@@ -104,6 +104,26 @@ class BlockhuntConfigService(
         }
     }
 
+    /** 自动分配单调递增的道具刷新点编号并保存位置。 */
+    fun addNextManagedItemSpawn(game: ManagedGameConfig, point: BlockhuntPoint): String {
+        val managedConfig = YamlConfiguration.loadConfiguration(game.file)
+        val spawns = managedConfig.getMapList("blockhunt.item-spawns")
+            .map { linkedMapOf<String, Any?>(*it.entries.map { entry -> entry.key.toString() to entry.value }.toTypedArray()) }
+            .toMutableList()
+        val existingIds = spawns.mapNotNull { it["id"]?.toString() }
+        val inferred = existingIds.mapNotNull { id ->
+            id.takeIf { it.startsWith("item_", ignoreCase = true) }?.substringAfterLast('_')?.toIntOrNull()
+        }.maxOrNull()?.plus(1) ?: 1
+        var index = maxOf(managedConfig.getInt("blockhunt.next-item-index", 1), inferred).coerceAtLeast(1)
+        while (existingIds.any { it.equals("item_$index", ignoreCase = true) }) index++
+        val id = "item_$index"
+        spawns.add(linkedMapOf("id" to id, "point" to pointToMap(point)))
+        managedConfig.set("blockhunt.item-spawns", spawns)
+        managedConfig.set("blockhunt.next-item-index", index + 1)
+        managedConfig.save(game.file)
+        return id
+    }
+
     fun removeManagedItemSpawn(game: ManagedGameConfig, id: String): Boolean {
         val managedConfig = YamlConfiguration.loadConfiguration(game.file)
         val spawns = managedConfig.getMapList("blockhunt.item-spawns").toMutableList()

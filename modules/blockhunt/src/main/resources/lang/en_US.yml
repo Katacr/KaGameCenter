@@ -73,6 +73,7 @@ blockhunt:
   editor_button_preview: "§ePreview"
   editor_private_snapshot_failed: "§cFailed to create private map snapshot."
   editor_open_failed: "§cFailed to open private editor world."
+  editor_menu_open_failed: "§eThe editor menu could not open. Use /kgc admin blockhunt openworld <gameId> to enter the private editor world directly."
   editor_opened: "§aOpened private editor world: §f{0}"
   editor_saved: "§aSaved private map snapshot."
   editor_save_failed: "§cFailed to save private map snapshot."
@@ -85,17 +86,28 @@ blockhunt:
   editor_field_play_region: "Play region"
   editor_item_id_missing: "§cEnter an item spawn id."
   editor_item_added: "§aAdded item spawn: §f{0}"
+  editor_capture_wrong_session: "§cOpen this managed game's editor world before using the bone capture tool."
   editor_item_removed: "§aRemoved item spawn: §f{0}"
   editor_item_missing: "§cItem spawn not found: {0}"
   editor_previewed: "§aPreviewing play region and item spawns for 10 seconds."
   admin_reloaded: "§aBlock Hunt config reloaded."
+  admin_list_empty: "§eNo Block Hunt managed games exist."
+  admin_list_header: "§6Block Hunt managed games: §f{0}"
+  admin_list_entry: "§7- §f{0} §8| §e{1} §8| §7enabled={2} privateSnapshot={3}"
+  admin_game_missing: "§cBlock Hunt managed game not found: {0}"
+  admin_editor_required: "§cUse edit or openworld to enter a Block Hunt private editor world first."
   admin_help: |-
     §6Block Hunt Admin Commands
     §e/{0} admin blockhunt reload §7Reload config
-    §e/{0} admin blockhunt setlobby §7Set managed game lobby
-    §e/{0} admin blockhunt sethunter §7Set hunter spawn
-    §e/{0} admin blockhunt sethider §7Set hider spawn
+    §e/{0} admin blockhunt list §7List managed games
+    §e/{0} admin blockhunt edit <gameId> §7Reopen the editor menu
+    §e/{0} admin blockhunt openworld <gameId> §7Enter the private editor world directly
+    §e/{0} admin blockhunt setlobby §7Start lobby position capture
+    §e/{0} admin blockhunt sethunter §7Start hunter spawn capture
+    §e/{0} admin blockhunt sethider §7Start hider spawn capture
     §e/{0} admin blockhunt setregion §7Set play region from current selection
-    §e/{0} admin blockhunt additem [id] §7Add item spawn at current location
+    §e/{0} admin blockhunt additem §7Start item spawn capture
     §e/{0} admin blockhunt removeitem <id> §7Remove item spawn
+    §e/{0} admin blockhunt save §7Save the private map snapshot
+    §e/{0} admin blockhunt close §7Save and close the editor world
     §e/{0} admin blockhunt preview §7Preview current game config

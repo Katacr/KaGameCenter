@@ -138,6 +138,21 @@ class HungerConfigService(
         upsertNamedPoint(game, "hunger.supply-chests", id, point)
     }
 
+    /** 自动分配单调递增的贡品出生点编号并保存位置。 */
+    fun addNextManagedTributeSpawn(game: ManagedGameConfig, point: HungerPoint): String {
+        return addNextNamedPoint(game, "tribute-spawns", "hunger.next-tribute-index", "tribute", point)
+    }
+
+    /** 自动分配单调递增的死斗出生点编号并保存位置。 */
+    fun addNextManagedDeathmatchSpawn(game: ManagedGameConfig, point: HungerPoint): String {
+        return addNextNamedPoint(game, "deathmatch-spawns", "hunger.next-deathmatch-index", "dm", point)
+    }
+
+    /** 自动分配单调递增的补给箱编号并保存方块位置。 */
+    fun addNextManagedSupplyChest(game: ManagedGameConfig, point: HungerPoint): String {
+        return addNextNamedPoint(game, "supply-chests", "hunger.next-chest-index", "chest", point)
+    }
+
     fun removeManagedSupplyChest(game: ManagedGameConfig, id: String): Boolean {
         return removeNamedPoint(game, "hunger.supply-chests", id)
     }
@@ -154,6 +169,29 @@ class HungerConfigService(
 
     private fun upsertNamedPoint(game: ManagedGameConfig, path: String, id: String, point: HungerPoint) {
         saveManaged(game) { mapPointService.upsertNamedPoint(it, path, id, point) }
+    }
+
+    /** 为指定 Hunger 点位列表推断并持久化下一个可用编号。 */
+    private fun addNextNamedPoint(
+        game: ManagedGameConfig,
+        listPath: String,
+        counterPath: String,
+        prefix: String,
+        point: HungerPoint
+    ): String {
+        val managed = YamlConfiguration.loadConfiguration(game.file)
+        val section = managed.getConfigurationSection("hunger") ?: managed.createSection("hunger")
+        val existingIds = mapPointService.readNamedPoints(section, listPath).map { it.id }
+        val inferred = existingIds.mapNotNull { id ->
+            id.takeIf { it.startsWith("${prefix}_", ignoreCase = true) }?.substringAfterLast('_')?.toIntOrNull()
+        }.maxOrNull()?.plus(1) ?: 1
+        var index = maxOf(managed.getInt(counterPath, 1), inferred).coerceAtLeast(1)
+        while (existingIds.any { it.equals("${prefix}_$index", ignoreCase = true) }) index++
+        val id = "${prefix}_$index"
+        mapPointService.upsertNamedPoint(managed, "hunger.$listPath", id, point)
+        managed.set(counterPath, index + 1)
+        managed.save(game.file)
+        return id
     }
 
     private fun removeNamedPoint(game: ManagedGameConfig, path: String, id: String): Boolean {

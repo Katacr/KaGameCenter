@@ -2,9 +2,11 @@ package org.katacr.kagamecenter.hunger
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.Location
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
+import org.katacr.kaGameCenter.editor.EditorPointCaptureService
 import org.katacr.kaGameCenter.editor.MapEditorService
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.ManagedGameConfig
@@ -25,7 +27,8 @@ class HungerManagedGameEditor(
     private val mapEditorService: MapEditorService,
     private val managedGameCatalog: ManagedGameCatalogService,
     private val menuService: GameCenterMenuService,
-    private val mapPointService: ManagedMapPointService
+    private val mapPointService: ManagedMapPointService,
+    private val pointCaptureService: EditorPointCaptureService
 ) : ModuleGameEditor {
     override val moduleId: String = "hunger"
 
@@ -35,9 +38,13 @@ class HungerManagedGameEditor(
         config.set("hunger.tribute-spawns", emptyList<Map<String, Any>>())
         config.set("hunger.deathmatch-spawns", emptyList<Map<String, Any>>())
         config.set("hunger.supply-chests", emptyList<Map<String, Any>>())
+        config.set("hunger.next-tribute-index", 1)
+        config.set("hunger.next-deathmatch-index", 1)
+        config.set("hunger.next-chest-index", 1)
     }
 
     override fun openEditor(player: Player, game: ManagedGameConfig) {
+        pointCaptureService.cancel(player)
         val configured = configService.readManagedGame(game)
         val menu = YamlConfiguration()
         menu.set("Title", language.getMessage("hunger.editor_title", game.displayName))
@@ -93,11 +100,17 @@ class HungerManagedGameEditor(
                 if (!mapEditorService.closeSession(game.globalId, save = true, restoreEditors = true)) return fail(player, "hunger.editor_close_failed")
                 player.sendMessage(Component.text(language.getMessage("hunger.editor_closed")))
             }
-            "set-lobby" -> saveField(player, game, "hunger.editor_field_lobby") {
-                configService.saveManagedLobby(game, mapPointService.fromLocation(player.location))
+            "set-lobby" -> {
+                startPositionCapture(player, game, "hunger.editor_field_lobby") { currentGame, location ->
+                    configService.saveManagedLobby(currentGame, mapPointService.fromLocation(location))
+                }
+                return true
             }
-            "set-spectator" -> saveField(player, game, "hunger.editor_field_spectator") {
-                configService.saveManagedSpectatorSpawn(game, mapPointService.fromLocation(player.location))
+            "set-spectator" -> {
+                startPositionCapture(player, game, "hunger.editor_field_spectator") { currentGame, location ->
+                    configService.saveManagedSpectatorSpawn(currentGame, mapPointService.fromLocation(location))
+                }
+                return true
             }
             "set-play-region" -> {
                 val selection = selectionService.getSelection(player) ?: return fail(player, "selection.not_ready")
@@ -105,25 +118,25 @@ class HungerManagedGameEditor(
                     configService.saveManagedPlayRegion(game, selection)
                 }
             }
-            "set-void-y" -> saveField(player, game, "hunger.editor_field_void_y") {
-                configService.saveManagedVoidY(game, player.location.y)
+            "set-void-y" -> {
+                startPositionCapture(player, game, "hunger.editor_field_void_y") { currentGame, location ->
+                    configService.saveManagedVoidY(currentGame, location.y)
+                }
+                return true
             }
             "add-tribute" -> {
-                val id = variable(variables, "tribute_id") ?: nextId("tribute", configService.readManagedGame(game).tributeSpawns)
-                configService.addManagedTributeSpawn(game, id, mapPointService.fromLocation(player.location))
-                changed(player, game, "hunger.editor_tribute_added", id)
+                startNamedPointCapture(player, game, "tribute", block = false)
+                return true
             }
             "remove-tribute" -> removePoint(player, game, variable(variables, "tribute_id"), "tribute")
             "add-deathmatch" -> {
-                val id = variable(variables, "deathmatch_id") ?: nextId("dm", configService.readManagedGame(game).deathmatchSpawns)
-                configService.addManagedDeathmatchSpawn(game, id, mapPointService.fromLocation(player.location))
-                changed(player, game, "hunger.editor_deathmatch_added", id)
+                startNamedPointCapture(player, game, "deathmatch", block = false)
+                return true
             }
             "remove-deathmatch" -> removePoint(player, game, variable(variables, "deathmatch_id"), "deathmatch")
             "add-chest" -> {
-                val id = variable(variables, "chest_id") ?: nextId("chest", configService.readManagedGame(game).supplyChests)
-                configService.addManagedSupplyChest(game, id, mapPointService.fromBlock(player.location))
-                changed(player, game, "hunger.editor_chest_added", id)
+                startNamedPointCapture(player, game, "chest", block = true)
+                return true
             }
             "remove-chest" -> removePoint(player, game, variable(variables, "chest_id"), "chest")
             "preview" -> preview(player, game)
@@ -168,6 +181,55 @@ class HungerManagedGameEditor(
     private fun changed(player: Player, game: ManagedGameConfig, key: String, id: String) {
         mapEditorService.saveIfEditing(game.globalId)
         player.sendMessage(Component.text(language.getMessage(key, id)))
+    }
+
+    /** 启动骨头右键位置采集，并持续覆盖指定单值坐标字段。 */
+    private fun startPositionCapture(
+        player: Player,
+        game: ManagedGameConfig,
+        fieldKey: String,
+        save: (ManagedGameConfig, Location) -> Unit
+    ) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+            save(currentGame, location)
+            capturePlayer.sendMessage(Component.text(language.getMessage("hunger.editor_saved_field", language.getMessage(fieldKey))))
+            true
+        }
+    }
+
+    /** 启动出生点或物资箱连续采集，并按类型自动生成递增编号。 */
+    private fun startNamedPointCapture(player: Player, game: ManagedGameConfig, type: String, block: Boolean) {
+        if (activeEditedGame(player, game.globalId) == null) return
+        val handler: (Player, Location) -> Boolean = handler@{ capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@handler false
+            val id = when (type) {
+                "tribute" -> configService.addNextManagedTributeSpawn(currentGame, mapPointService.fromLocation(location))
+                "deathmatch" -> configService.addNextManagedDeathmatchSpawn(currentGame, mapPointService.fromLocation(location))
+                else -> configService.addNextManagedSupplyChest(currentGame, mapPointService.fromBlock(location))
+            }
+            val key = when (type) {
+                "tribute" -> "hunger.editor_tribute_added"
+                "deathmatch" -> "hunger.editor_deathmatch_added"
+                else -> "hunger.editor_chest_added"
+            }
+            capturePlayer.sendMessage(Component.text(language.getMessage(key, id)))
+            true
+        }
+        if (block) pointCaptureService.beginBlockCapture(player, moduleId, handler)
+        else pointCaptureService.beginPositionCapture(player, moduleId, handler)
+    }
+
+    /** 确认玩家仍在目标托管游戏的编辑世界，并读取最新配置实例。 */
+    private fun activeEditedGame(player: Player, globalId: String): ManagedGameConfig? {
+        if (mapEditorService.currentSessionId(player) != globalId) {
+            player.sendMessage(Component.text(language.getMessage("hunger.editor_capture_wrong_session")))
+            return null
+        }
+        return managedGameCatalog.get(globalId).also { current ->
+            if (current == null) player.sendMessage(Component.text(language.getMessage("hunger.editor_capture_wrong_session")))
+        }
     }
 
     private fun removePoint(player: Player, game: ManagedGameConfig, id: String?, type: String) {

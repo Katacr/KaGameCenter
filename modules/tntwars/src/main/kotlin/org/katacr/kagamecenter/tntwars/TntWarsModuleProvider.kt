@@ -64,7 +64,8 @@ class TntWarsModuleProvider : GameModuleProvider {
                 worldService = context.worldService,
                 mapEditorService = context.mapEditorService,
                 managedGameCatalog = context.managedGameCatalog,
-                menuService = context.menuService
+                menuService = context.menuService,
+                pointCaptureService = context.editorPointCaptureService
             )
         )
         context.registerListener(TntWarsListener(context.roomManager))

@@ -66,3 +66,4 @@ tntwars:
   editor_field_region: "游戏区域"
   editor_field_void_y: "淘汰高度"
   editor_previewed: "§a已预览 TNT Wars 区域和出生点。"
+  editor_capture_wrong_session: "§c请先打开当前小游戏的编辑世界，再使用骨头采点。"

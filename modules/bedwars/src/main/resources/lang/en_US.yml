@@ -590,6 +590,7 @@ bedwars:
   editor_saved: "The editor world was saved."
   editor_closed: "The editor world was saved and closed."
   editor_previewed: "Previewed lobby, team, bed, recovery, shop and generator points."
+  editor_capture_wrong_session: "§cOpen this managed game's editor world before using the bone capture tool."
   editor_saved_field: "Saved: {0}"
   editor_team_saved: "Saved team {0}."
   editor_team_removed: "Removed team {0}."

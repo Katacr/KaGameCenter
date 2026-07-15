@@ -1,6 +1,6 @@
 id: bedwars
 name: "起床战争"
-enabled: false
+enabled: true
 main: jar
 jar: "../bedwars.jar"
 entrypoint: "org.katacr.kagamecenter.bedwars.BedWarsModuleProvider"

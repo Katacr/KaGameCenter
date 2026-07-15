@@ -10,8 +10,28 @@ data class SpectatorPolicy(
     val allowFollowPlayer: Boolean = true,
     val revealHiddenPlayers: Boolean = true,
     val delaySeconds: Int = 0,
-    val hotbarItems: List<SpectatorHotbarItem> = DEFAULT_HOTBAR_ITEMS
+    val hotbarItems: List<SpectatorHotbarItem>
 ) {
+    /** 保留新增观战热栏前的构造器 ABI，使旧版外部模块可继续由新版主插件加载。 */
+    constructor(
+        enabled: Boolean = true,
+        mode: SpectatorMode = SpectatorMode.VANILLA,
+        allowDuringRunning: Boolean = true,
+        allowFreeFly: Boolean = true,
+        allowFollowPlayer: Boolean = true,
+        revealHiddenPlayers: Boolean = true,
+        delaySeconds: Int = 0
+    ) : this(
+        enabled,
+        mode,
+        allowDuringRunning,
+        allowFreeFly,
+        allowFollowPlayer,
+        revealHiddenPlayers,
+        delaySeconds,
+        DEFAULT_HOTBAR_ITEMS
+    )
+
     companion object {
         val DEFAULT_HOTBAR_ITEMS = listOf(
             SpectatorHotbarItem("follow", Material.COMPASS, 0, action = SpectatorAction.FOLLOW),
