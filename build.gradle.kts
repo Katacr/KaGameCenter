@@ -1,7 +1,41 @@
+import org.gradle.jvm.tasks.Jar
+import org.gradle.language.jvm.tasks.ProcessResources
+
 plugins {
     kotlin("jvm") version "2.3.20"
     id("com.gradleup.shadow") version "8.3.0"
     id("xyz.jpenilla.run-paper") version "2.3.1"
+}
+
+subprojects {
+    version = providers.gradleProperty("${project.name}Version")
+        .orElse(rootProject.version.toString())
+        .get()
+
+    tasks.withType<Jar>().configureEach {
+        archiveFileName.set("${project.name}-${project.version}.jar")
+    }
+
+    tasks.withType<ProcessResources>().configureEach {
+        val props = mapOf("version" to project.version.toString())
+        inputs.properties(props)
+        filteringCharset = "UTF-8"
+        filesMatching("config.yml") {
+            expand(props)
+        }
+    }
+}
+
+tasks.register("buildModules") {
+    group = "build"
+    description = "Build every managed game module jar."
+    dependsOn(subprojects.filter { it.path.startsWith(":modules:") }.map { "${it.path}:jar" })
+}
+
+tasks.register("buildAll") {
+    group = "build"
+    description = "Build the KaGameCenter shadow jar and every managed game module jar."
+    dependsOn("shadowJar", "buildModules")
 }
 
 repositories {

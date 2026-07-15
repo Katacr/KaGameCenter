@@ -37,6 +37,7 @@ import java.io.File
 
 class GameModuleContext(
     val id: String,
+    val version: String,
     val dataFolder: File,
     val plugin: JavaPlugin,
     val api: GameCenterApi,

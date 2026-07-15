@@ -1,8 +1,9 @@
 id: parkour
 name: "跑酷"
+version: "${version}"
 enabled: true
 main: jar
-jar: "../parkour.jar"
+jar: "../parkour-${version}.jar"
 entrypoint: "org.katacr.kagamecenter.parkour.ParkourModuleProvider"
 description: "External managed Parkour module."
 

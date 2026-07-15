@@ -1,8 +1,9 @@
 id: tntwars
 name: "TNT Wars"
+version: "${version}"
 enabled: true
 main: jar
-jar: "../tntwars.jar"
+jar: "../tntwars-${version}.jar"
 entrypoint: "org.katacr.kagamecenter.tntwars.TntWarsModuleProvider"
 description: "External managed TNT Wars module."
 

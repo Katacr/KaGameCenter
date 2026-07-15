@@ -1,8 +1,9 @@
 id: hunger
 name: "饥饿游戏"
+version: "${version}"
 enabled: true
 main: jar
-jar: "../hunger.jar"
+jar: "../hunger-${version}.jar"
 entrypoint: "org.katacr.kagamecenter.hunger.HungerModuleProvider"
 description: "Classic external Survival Games module."
 

@@ -1,8 +1,9 @@
 id: blockhunt
 name: "方块躲猫猫"
+version: "${version}"
 enabled: true
 main: jar
-jar: "../blockhunt.jar"
+jar: "../blockhunt-${version}.jar"
 entrypoint: "org.katacr.kagamecenter.blockhunt.BlockhuntModuleProvider"
 description: "External managed Block Hunt module."
 

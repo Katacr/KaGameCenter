@@ -1,8 +1,9 @@
 id: bedwars
 name: "起床战争"
+version: "${version}"
 enabled: true
 main: jar
-jar: "../bedwars.jar"
+jar: "../bedwars-${version}.jar"
 entrypoint: "org.katacr.kagamecenter.bedwars.BedWarsModuleProvider"
 description: "KaGameCenter BedWars module (development preview)."
 

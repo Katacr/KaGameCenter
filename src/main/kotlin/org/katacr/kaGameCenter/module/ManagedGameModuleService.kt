@@ -39,7 +39,7 @@ class ManagedGameModuleService(
         get() = File(plugin.dataFolder, "modules")
     private val loadedModules = linkedMapOf<String, LoadedGameModule>()
 
-    fun loadedModuleIds(): List<String> = loadedModules.keys.toList()
+    fun loadedModuleIds(): List<String> = loadedModules.values.map { "${it.id}@${it.version}" }
 
     fun loadedModuleCount(): Int = loadedModules.size
 
@@ -69,7 +69,8 @@ class ManagedGameModuleService(
 
     private fun loadManagedModule(moduleId: String) {
         val dataFolder = File(modulesFolder, moduleId)
-        val config = YamlConfiguration.loadConfiguration(File(dataFolder, "config.yml"))
+        val configFile = File(dataFolder, "config.yml")
+        val config = YamlConfiguration.loadConfiguration(configFile)
         if (!config.getBoolean("enabled", true)) {
             plugin.logger.info("Managed game module disabled: $moduleId")
             return
@@ -80,11 +81,14 @@ class ManagedGameModuleService(
             return
         }
 
-        val jarFile = resolveJarFile(dataFolder, config.getString("jar", "../$moduleId.jar") ?: "../$moduleId.jar")
+        val configuredJarPath = config.getString("jar", "../$moduleId.jar") ?: "../$moduleId.jar"
+        val jarFile = resolveJarFile(dataFolder, moduleId, configuredJarPath)
         if (!jarFile.isFile) {
             plugin.logger.warning("Managed game module jar not found: ${jarFile.absolutePath}")
             return
         }
+        val moduleVersion = readJarModuleVersion(jarFile, config.getString("version"))
+        syncResolvedModuleMetadata(configFile, config, dataFolder, configuredJarPath, jarFile, moduleVersion)
 
         val entrypoint = config.getString("entrypoint")?.takeIf { it.isNotBlank() }
         if (entrypoint == null) {
@@ -104,6 +108,7 @@ class ManagedGameModuleService(
             provider = loadedProvider
             val moduleContext = GameModuleContext(
                 id = moduleId,
+                version = moduleVersion,
                 dataFolder = dataFolder,
                 plugin = plugin,
                 api = api,
@@ -136,8 +141,8 @@ class ManagedGameModuleService(
             context = moduleContext
             loadStarted = true
             loadedProvider.onLoad(moduleContext)
-            loadedModules[moduleId] = LoadedGameModule(moduleId, loadedProvider, moduleContext, classLoader)
-            plugin.logger.info("Managed game module jar loaded: $moduleId")
+            loadedModules[moduleId] = LoadedGameModule(moduleId, moduleVersion, loadedProvider, moduleContext, classLoader)
+            plugin.logger.info("Managed game module jar loaded: $moduleId v$moduleVersion (${jarFile.name})")
         } catch (error: Throwable) {
             if (loadStarted) {
                 runCatching { provider?.onUnload() }
@@ -165,7 +170,7 @@ class ManagedGameModuleService(
 
     private fun releaseJarModuleResources() {
         modulesFolder.listFiles { file -> file.isFile && file.extension.equals("jar", ignoreCase = true) }
-            ?.sortedBy { it.name.lowercase(Locale.ROOT) }
+            ?.sortedWith(compareByDescending<File> { it.lastModified() }.thenBy { it.name.lowercase(Locale.ROOT) })
             ?.forEach { jarFile ->
                 runCatching { releaseJarModuleResources(jarFile) }
                     .onFailure { plugin.logger.warning("Failed to inspect managed game module jar ${jarFile.name}: ${it.message}") }
@@ -297,9 +302,71 @@ class ManagedGameModuleService(
         }
     }
 
-    private fun resolveJarFile(dataFolder: File, jarPath: String): File {
+    /** 解析模块 JAR；旧版 `<id>.jar` 配置优先迁移到最新修改的版本化产物。 */
+    private fun resolveJarFile(dataFolder: File, moduleId: String, jarPath: String): File {
         val file = File(jarPath)
-        return if (file.isAbsolute) file else File(dataFolder, jarPath).canonicalFile
+        val configured = if (file.isAbsolute) file else File(dataFolder, jarPath).canonicalFile
+        val legacyName = "$moduleId.jar"
+        val versionedPrefix = "$moduleId-"
+        val supportsVersionFallback = configured.name.equals(legacyName, ignoreCase = true) ||
+            configured.name.startsWith(versionedPrefix, ignoreCase = true)
+        if (configured.isFile && !configured.name.equals(legacyName, ignoreCase = true)) return configured
+        if (!supportsVersionFallback) return configured
+        return configured.parentFile
+            ?.listFiles { candidate ->
+                candidate.isFile &&
+                    candidate.extension.equals("jar", ignoreCase = true) &&
+                    candidate.name.startsWith(versionedPrefix, ignoreCase = true)
+            }
+            ?.maxWithOrNull(compareBy<File> { it.lastModified() }.thenBy { it.name.lowercase(Locale.ROOT) })
+            ?: configured
+    }
+
+    /** 从模块 JAR 内嵌配置读取构建版本，旧 JAR 缺少字段时回退到外部配置。 */
+    private fun readJarModuleVersion(jarFile: File, configuredVersion: String?): String {
+        val embeddedVersion = runCatching {
+            JarFile(jarFile).use { jar ->
+                val entry = jar.getJarEntry("config.yml") ?: return@use null
+                jar.getInputStream(entry).use { input ->
+                    InputStreamReader(input, StandardCharsets.UTF_8).use(YamlConfiguration::loadConfiguration)
+                }.getString("version")
+            }
+        }.getOrNull()
+        return embeddedVersion?.trim()?.takeIf { it.isNotBlank() }
+            ?: configuredVersion?.trim()?.takeIf { it.isNotBlank() }
+            ?: "unknown"
+    }
+
+    /** 在回退到版本化 JAR 后同步外部配置中的版本和实际相对路径。 */
+    private fun syncResolvedModuleMetadata(
+        configFile: File,
+        config: YamlConfiguration,
+        dataFolder: File,
+        configuredJarPath: String,
+        jarFile: File,
+        moduleVersion: String
+    ) {
+        var changed = false
+        if (config.getString("version") != moduleVersion) {
+            config.set("version", moduleVersion)
+            changed = true
+        }
+        val configuredJar = resolveConfiguredJar(dataFolder, configuredJarPath)
+        if (configuredJar != jarFile.canonicalFile) {
+            val relativeJar = dataFolder.toPath().relativize(jarFile.canonicalFile.toPath())
+                .joinToString("/")
+            config.set("jar", relativeJar)
+            changed = true
+        }
+        if (!changed) return
+        runCatching { config.save(configFile) }
+            .onFailure { plugin.logger.warning("Failed to update managed module metadata ${configFile.absolutePath}: ${it.message}") }
+    }
+
+    /** 将外部配置中的绝对或相对 JAR 路径规范化为标准文件。 */
+    private fun resolveConfiguredJar(dataFolder: File, jarPath: String): File {
+        val file = File(jarPath)
+        return (if (file.isAbsolute) file else File(dataFolder, jarPath)).canonicalFile
     }
 
     private fun sanitizeModuleId(value: String): String {
@@ -311,6 +378,7 @@ class ManagedGameModuleService(
 
     private data class LoadedGameModule(
         val id: String,
+        val version: String,
         val provider: GameModuleProvider,
         val context: GameModuleContext,
         val classLoader: URLClassLoader

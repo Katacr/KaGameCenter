@@ -17,7 +17,3 @@ dependencies {
 kotlin {
     jvmToolchain(21)
 }
-
-tasks.jar {
-    archiveFileName.set("bedwars.jar")
-}

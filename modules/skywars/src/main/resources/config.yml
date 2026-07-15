@@ -1,8 +1,9 @@
 id: skywars
 name: "空岛战争"
+version: "${version}"
 enabled: true
 main: jar
-jar: "../skywars.jar"
+jar: "../skywars-${version}.jar"
 entrypoint: "org.katacr.kagamecenter.skywars.SkyWarsModuleProvider"
 description: "KaGameCenter managed SkyWars module."
 
