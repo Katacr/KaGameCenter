@@ -5,6 +5,7 @@ import org.bukkit.Bukkit
 import org.bukkit.configuration.file.YamlConfiguration
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
+import org.bukkit.scheduler.BukkitTask
 import org.katacr.kaGameCenter.game.GameDefinition
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.ManagedGameConfig
@@ -15,6 +16,9 @@ import org.katacr.kaGameCenter.game.GameRoomManager
 import org.katacr.kaGameCenter.game.GameState
 import org.katacr.kaGameCenter.event.GameRoomsMenuOpenedEvent
 import org.katacr.kaGameCenter.event.GameStatsMenuOpenedEvent
+import org.katacr.kaGameCenter.friend.FriendOperationResult
+import org.katacr.kaGameCenter.friend.FriendRelation
+import org.katacr.kaGameCenter.friend.FriendService
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.menu.chest.ChestMenuService
 import org.katacr.kaGameCenter.team.GameTeam
@@ -32,12 +36,14 @@ class GameCenterMenuService(
     private val teamService: GameTeamService,
     private val languageManager: LanguageManager,
     private val managedGameCatalog: ManagedGameCatalogService,
-    private val velocityBridgeService: VelocityBridgeService
+    private val velocityBridgeService: VelocityBridgeService,
+    private val friendService: FriendService
 ) {
     private val templateService = MenuTemplateService(plugin)
     private var chestMenuService: ChestMenuService? = null
     private var actionHandlerRegistered = false
     private var actionHandlerProxy: Any? = null
+    private val roomRefreshTasks = linkedMapOf<String, BukkitTask>()
 
     fun init() {
         templateService.init()
@@ -53,6 +59,8 @@ class GameCenterMenuService(
     fun isActionHandlerRegistered(): Boolean = actionHandlerRegistered
 
     fun shutdown() {
+        roomRefreshTasks.values.forEach { if (!it.isCancelled) it.cancel() }
+        roomRefreshTasks.clear()
         if (!actionHandlerRegistered) return
         runCatching {
             val apiClass = Class.forName("org.katacr.kamenu.api.KaMenuAPI")
@@ -65,6 +73,30 @@ class GameCenterMenuService(
 
     fun openMainMenu(player: Player) {
         openOrFallback(player, mainMenuConfig(player), "kagamecenter:main")
+    }
+
+    /** 打开好友列表、待处理申请和按名称或 UUID 添加好友入口。 */
+    fun openFriendsMenu(player: Player) {
+        openOrFallback(player, friendsMenuConfig(player), "kagamecenter:friends")
+    }
+
+    /** 打开单个好友的加入、观战、私聊和删除操作页。 */
+    private fun openFriendMenu(player: Player, targetId: UUID) {
+        if (friendService.relation(player.uniqueId, targetId) != FriendRelation.FRIENDS) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.not_friends", playerName(targetId))))
+            openFriendsMenu(player)
+            return
+        }
+        openOrFallback(player, friendMenuConfig(targetId), "kagamecenter:friend:$targetId")
+    }
+
+    /** 打开好友私聊输入框。 */
+    private fun openFriendMessageMenu(player: Player, targetId: UUID) {
+        if (friendService.relation(player.uniqueId, targetId) != FriendRelation.FRIENDS) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.not_friends", playerName(targetId))))
+            return
+        }
+        openOrFallback(player, friendMessageMenuConfig(targetId), "kagamecenter:friend-message:$targetId")
     }
 
     /** 打开玩家全部玩法战绩概览，或指定玩法的详细统计。 */
@@ -131,8 +163,22 @@ class GameCenterMenuService(
         )
     }
 
+    /** 合并同房间的刷新请求，并在五 tick 后向仍处于大厅阶段的全部成员重发 Dialog。 */
+    fun scheduleRoomDialogRefresh(roomId: String) {
+        val expectedRoom = roomManager.getRoom(roomId) ?: return
+        roomRefreshTasks.remove(roomId)?.cancel()
+        roomRefreshTasks[roomId] = Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+            roomRefreshTasks.remove(roomId)
+            val room = roomManager.getRoom(roomId)?.takeIf { it === expectedRoom } ?: return@Runnable
+            if (!room.canJoin()) return@Runnable
+            (room.players + room.spectators).mapNotNull(Bukkit::getPlayer).forEach { viewer ->
+                if (roomManager.getPlayerRoom(viewer)?.id == room.id) openRoomMenu(viewer, room.id)
+            }
+        }, ROOM_DIALOG_REFRESH_DELAY_TICKS)
+    }
+
     /** 打开成员操作菜单，并保留其来源房间列表的玩法与分组筛选。 */
-    private fun openMemberMenu(
+    fun openMemberMenu(
         player: Player,
         roomId: String,
         targetId: UUID,
@@ -150,7 +196,7 @@ class GameCenterMenuService(
         val suffix = selectedGame?.let { ":from:$it" }.orEmpty() + selectedGroup?.let { ":group:$it" }.orEmpty()
         openOrFallback(
             player,
-            memberMenuConfig(room, targetId, selectedGame, selectedGroup),
+            memberMenuConfig(room, player, targetId, selectedGame, selectedGroup),
             "kagamecenter:room-member:$roomId/$targetId$suffix"
         )
     }
@@ -278,6 +324,9 @@ class GameCenterMenuService(
             val parts = payload.split(Regex("\\s+")).filter { it.isNotBlank() }
             when (parts.firstOrNull()) {
                 "open-main" -> openMainMenu(player)
+                "open-friends" -> openFriendsMenu(player)
+                "open-friend" -> parts.getOrNull(1)?.let { openFriendMenu(player, UUID.fromString(it)) }
+                "open-friend-message" -> parts.getOrNull(1)?.let { openFriendMessageMenu(player, UUID.fromString(it)) }
                 "open-stats" -> openStatsMenu(player, parts.getOrNull(1))
                 "open-stats-overview" -> openStatsOverview(player)
                 "open-games" -> openGamesMenu(player)
@@ -309,19 +358,28 @@ class GameCenterMenuService(
                     val actionName = parts.drop(2).joinToString(" ")
                     managedGameCatalog.handleEditorAction(player, gameId, actionName, variables)
                 }
-                "create-room" -> createRoom(
-                    player,
-                    parts.getOrNull(1) ?: DEFAULT_GAME_ID,
-                    parts.getOrNull(2),
-                    variables["room_name"]
-                )
+                "create-room" -> {
+                    val gameId = parts.getOrNull(1) ?: defaultGameId()
+                    if (gameId == null) {
+                        player.sendMessage(Component.text(languageManager.getMessage("command.no_games")))
+                    } else {
+                        createRoom(player, gameId, parts.getOrNull(2), variables["room_name"])
+                    }
+                }
                 "create-room-config" -> createRoom(
                     player,
                     parts.getOrNull(1) ?: return@runSync,
                     null,
                     variables["room_name"]
                 )
-                "quickjoin" -> quickJoin(player, parts.getOrNull(1) ?: DEFAULT_GAME_ID)
+                "quickjoin" -> {
+                    val gameId = parts.getOrNull(1) ?: defaultGameId()
+                    if (gameId == null) {
+                        player.sendMessage(Component.text(languageManager.getMessage("command.no_games")))
+                    } else {
+                        quickJoin(player, gameId)
+                    }
+                }
                 "join" -> parts.getOrNull(1)?.let { joinRoom(player, it) }
                 "spectate" -> parts.getOrNull(1)?.let { spectateRoom(player, it) }
                 "proxy-join" -> if (parts.size >= 3) proxyJoinRoom(player, parts[1], parts[2])
@@ -336,6 +394,7 @@ class GameCenterMenuService(
                 }
                 "transfer-owner" -> if (parts.size >= 3 && requireRoomOwner(player, parts[1])) {
                     if (roomManager.transferOwner(parts[1], UUID.fromString(parts[2]))) {
+                        scheduleRoomDialogRefresh(parts[1])
                         openRoomMenu(player, parts[1], parts.getOrNull(3), parts.getOrNull(4))
                     }
                 }
@@ -346,6 +405,18 @@ class GameCenterMenuService(
                     ) {
                         openRoomMenu(player, parts[1])
                     }
+                }
+                "friend-add" -> {
+                    val input = parts.getOrNull(1) ?: variables["player_id"]
+                    handleFriendAdd(player, input)
+                }
+                "friend-accept" -> parts.getOrNull(1)?.let { handleFriendAccept(player, UUID.fromString(it)) }
+                "friend-deny" -> parts.getOrNull(1)?.let { handleFriendDeny(player, UUID.fromString(it)) }
+                "friend-remove" -> parts.getOrNull(1)?.let { handleFriendRemove(player, UUID.fromString(it)) }
+                "friend-join" -> parts.getOrNull(1)?.let { handleFriendRoomAction(player, UUID.fromString(it), false) }
+                "friend-spectate" -> parts.getOrNull(1)?.let { handleFriendRoomAction(player, UUID.fromString(it), true) }
+                "friend-send-message" -> parts.getOrNull(1)?.let {
+                    handleFriendMessage(player, UUID.fromString(it), variables["message"].orEmpty())
                 }
                 "map-select" -> if (parts.size >= 3 && requireAdmin(player)) handleMapResult(player, mapManager.selectMap(parts[1], parts[2])) {
                     openMapMenu(player, parts[1], parts[2])
@@ -535,6 +606,7 @@ class GameCenterMenuService(
             },
             "menu.button_create_room" to languageManager.getMessage("menu.button_create_room"),
             "menu.button_stats" to languageManager.getMessage("menu.button_stats"),
+            "menu.button_friends" to languageManager.getMessage("menu.button_friends"),
             "menu.button_room_detail" to languageManager.getMessage("menu.button_room_detail"),
             "menu.button_join_room_list" to languageManager.getMessage("menu.button_join_room_list"),
             "menu.button_leave" to languageManager.getMessage("menu.button_leave"),
@@ -570,6 +642,7 @@ class GameCenterMenuService(
             button("create", languageManager.getMessage("menu.button_create_room"), "kgc:open-create-game")
             button("rooms", languageManager.getMessage("menu.button_join_room_list"), "kgc:open-rooms")
             button("stats", languageManager.getMessage("menu.button_stats"), "kgc:open-stats")
+            button("friends", languageManager.getMessage("menu.button_friends"), "kgc:open-friends")
             if (roomManager.getPlayerRoom(player) != null) {
                 button("leave", languageManager.getMessage("menu.button_leave"), "kgc:leave")
             }
@@ -657,12 +730,8 @@ class GameCenterMenuService(
                 add(languageManager.getMessage("stats.losses", stats?.losses ?: 0))
                 add(languageManager.getMessage("stats.kills", stats?.kills ?: 0))
                 add(languageManager.getMessage("stats.deaths", stats?.deaths ?: 0))
-                add(languageManager.getMessage("stats.final_kills", metrics["final-kills"] ?: 0))
-                add(languageManager.getMessage("stats.final_deaths", metrics["final-deaths"] ?: 0))
-                add(languageManager.getMessage("stats.beds_destroyed", metrics["beds-destroyed"] ?: 0))
                 add(languageManager.getMessage("stats.points", stats?.points ?: 0))
-                val knownMetrics = setOf("final-kills", "final-deaths", "beds-destroyed")
-                metrics.filterKeys { it !in knownMetrics }.toSortedMap().forEach { (metricId, value) ->
+                metrics.toSortedMap().forEach { (metricId, value) ->
                     add(languageManager.getMessage("stats.metric_generic", metricId, value))
                 }
             })
@@ -680,6 +749,216 @@ class GameCenterMenuService(
             .firstOrNull { it.id.equals(gameId, ignoreCase = true) }
             ?.displayName
             ?: gameId
+    }
+
+    /** 构建好友列表、申请处理和玩家 ID 输入菜单。 */
+    private fun friendsMenuConfig(player: Player): YamlConfiguration {
+        val friendIds = friendService.friendsOf(player.uniqueId).sortedBy(::playerName)
+        val incoming = friendService.incomingRequests(player.uniqueId).sortedBy(::playerName)
+        return menu(languageManager.getMessage("friend.menu_title")).apply {
+            message("summary", languageManager.getMessage("friend.menu_summary", friendIds.size, incoming.size))
+            set("Inputs.player_id.type", "input")
+            set("Inputs.player_id.text", languageManager.getMessage("friend.input_player"))
+            set("Inputs.player_id.default", "")
+            set("Inputs.player_id.max_length", 36)
+            multi(columns = 2)
+            button("add", languageManager.getMessage("friend.button_add"), "kgc:friend-add")
+            incoming.forEachIndexed { index, senderId ->
+                button(
+                    "request_$index",
+                    languageManager.getMessage("friend.request_button", playerName(senderId)),
+                    "kgc:friend-accept $senderId",
+                    listOf(languageManager.getMessage("friend.request_menu_tooltip"))
+                )
+            }
+            friendIds.forEachIndexed { index, friendId ->
+                val online = Bukkit.getPlayer(friendId) != null
+                button(
+                    "friend_$index",
+                    languageManager.getMessage("friend.friend_button", playerName(friendId)),
+                    "kgc:open-friend $friendId",
+                    listOf(languageManager.getMessage(if (online) "friend.status_online" else "friend.status_offline"))
+                )
+            }
+            exit("kgc:open-main", languageManager.getMessage("menu.button_back"))
+        }
+    }
+
+    /** 构建单个好友的通用操作菜单。 */
+    private fun friendMenuConfig(targetId: UUID): YamlConfiguration {
+        val targetName = playerName(targetId)
+        val online = Bukkit.getPlayer(targetId) != null
+        return menu(languageManager.getMessage("friend.detail_title", targetName)).apply {
+            message("status", languageManager.getMessage(
+                "friend.detail_status",
+                targetName,
+                languageManager.getMessage(if (online) "friend.status_online" else "friend.status_offline")
+            ))
+            multi(columns = 2)
+            button("message", languageManager.getMessage("friend.button_message"), "kgc:open-friend-message $targetId")
+            button("join", languageManager.getMessage("friend.button_join"), "kgc:friend-join $targetId")
+            button("spectate", languageManager.getMessage("friend.button_spectate"), "kgc:friend-spectate $targetId")
+            button("remove", languageManager.getMessage("friend.button_remove"), "kgc:friend-remove $targetId")
+            exit("kgc:open-friends", languageManager.getMessage("menu.button_back"))
+        }
+    }
+
+    /** 构建好友私聊输入菜单。 */
+    private fun friendMessageMenuConfig(targetId: UUID): YamlConfiguration {
+        return menu(languageManager.getMessage("friend.message_title", playerName(targetId))).apply {
+            set("Inputs.message.type", "input")
+            set("Inputs.message.text", languageManager.getMessage("friend.input_message"))
+            set("Inputs.message.default", "")
+            set("Inputs.message.max_length", 256)
+            set("Bottom.type", "confirmation")
+            set("Bottom.confirm.text", languageManager.getMessage("friend.button_send"))
+            set("Bottom.confirm.actions", listOf("kgc:friend-send-message $targetId"))
+            set("Bottom.deny.text", languageManager.getMessage("menu.button_back"))
+            set("Bottom.deny.actions", listOf("kgc:open-friend $targetId"))
+        }
+    }
+
+    /** 根据查看者与成员的关系向现有成员菜单附加好友按钮。 */
+    private fun addFriendButtons(config: YamlConfiguration, viewer: Player, targetId: UUID) {
+        if (viewer.uniqueId == targetId) return
+        when (friendService.relation(viewer.uniqueId, targetId)) {
+            FriendRelation.NONE -> config.button(
+                "friend_add",
+                languageManager.getMessage("friend.button_add"),
+                "kgc:friend-add $targetId"
+            )
+            FriendRelation.OUTGOING_REQUEST -> config.button(
+                "friend_pending",
+                languageManager.getMessage("friend.button_pending"),
+                "kgc:open-friends"
+            )
+            FriendRelation.INCOMING_REQUEST -> {
+                config.button(
+                    "friend_accept",
+                    languageManager.getMessage("friend.button_accept"),
+                    "kgc:friend-accept $targetId"
+                )
+                config.button(
+                    "friend_deny",
+                    languageManager.getMessage("friend.button_deny"),
+                    "kgc:friend-deny $targetId"
+                )
+            }
+            FriendRelation.FRIENDS -> {
+                config.button(
+                    "friend_message",
+                    languageManager.getMessage("friend.button_message"),
+                    "kgc:open-friend-message $targetId"
+                )
+                config.button(
+                    "friend_remove",
+                    languageManager.getMessage("friend.button_remove"),
+                    "kgc:friend-remove $targetId"
+                )
+            }
+            FriendRelation.SELF -> Unit
+        }
+    }
+
+    private fun handleFriendAdd(player: Player, input: String?) {
+        if (input.isNullOrBlank()) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.target_required")))
+            openFriendsMenu(player)
+            return
+        }
+        val target = friendService.resolvePlayer(input)
+        if (target == null) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.player_not_found", input)))
+            openFriendsMenu(player)
+            return
+        }
+        val result = friendService.request(player.uniqueId, target.uniqueId)
+        sendFriendResult(player, result, playerName(target.uniqueId))
+        if (result == FriendOperationResult.SENT) {
+            Bukkit.getPlayer(target.uniqueId)?.sendMessage(Component.text(
+                languageManager.getMessage("friend.request_received", player.name, "kgc", player.uniqueId)
+            ))
+        }
+        openFriendsMenu(player)
+    }
+
+    private fun handleFriendAccept(player: Player, senderId: UUID) {
+        val result = friendService.accept(player.uniqueId, senderId)
+        sendFriendResult(player, result, playerName(senderId))
+        if (result == FriendOperationResult.ACCEPTED) {
+            Bukkit.getPlayer(senderId)?.sendMessage(Component.text(
+                languageManager.getMessage("friend.request_accepted_target", player.name)
+            ))
+        }
+        openFriendsMenu(player)
+    }
+
+    private fun handleFriendDeny(player: Player, senderId: UUID) {
+        sendFriendResult(player, friendService.deny(player.uniqueId, senderId), playerName(senderId))
+        openFriendsMenu(player)
+    }
+
+    private fun handleFriendRemove(player: Player, targetId: UUID) {
+        sendFriendResult(player, friendService.remove(player.uniqueId, targetId), playerName(targetId))
+        openFriendsMenu(player)
+    }
+
+    private fun handleFriendRoomAction(player: Player, targetId: UUID, spectate: Boolean) {
+        if (friendService.relation(player.uniqueId, targetId) != FriendRelation.FRIENDS) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.not_friends", playerName(targetId))))
+            return
+        }
+        if (roomManager.getPlayerRoom(player) != null) {
+            player.sendMessage(Component.text(languageManager.getMessage("room.already_in_room")))
+            return
+        }
+        val target = Bukkit.getPlayer(targetId)
+        if (target == null) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.friend_offline", playerName(targetId))))
+            return
+        }
+        val room = roomManager.getPlayerRoom(target)
+        if (room == null) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.friend_not_in_room", target.name)))
+            return
+        }
+        val success = if (spectate) roomManager.spectateRoom(player, room.id) else roomManager.joinRoom(player, room.id)
+        val key = when {
+            !success && spectate -> "room.spectate_failed"
+            !success -> "room.join_failed"
+            spectate -> "friend.spectating_room"
+            else -> "friend.joined_room"
+        }
+        player.sendMessage(Component.text(if (success) {
+            languageManager.getMessage(key, target.name, room.id)
+        } else {
+            languageManager.getMessage(key, room.id)
+        }))
+    }
+
+    private fun handleFriendMessage(player: Player, targetId: UUID, message: String) {
+        if (friendService.relation(player.uniqueId, targetId) != FriendRelation.FRIENDS) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.not_friends", playerName(targetId))))
+            return
+        }
+        val trimmed = message.trim()
+        if (trimmed.isBlank()) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.message_empty")))
+            openFriendMessageMenu(player, targetId)
+            return
+        }
+        val target = Bukkit.getPlayer(targetId)
+        if (target == null) {
+            player.sendMessage(Component.text(languageManager.getMessage("friend.friend_offline", playerName(targetId))))
+            return
+        }
+        player.sendMessage(Component.text(languageManager.getMessage("friend.message_sent", target.name, trimmed)))
+        target.sendMessage(Component.text(languageManager.getMessage("friend.message_received", player.name, trimmed)))
+        openFriendMenu(player, targetId)
+    }
+
+    private fun sendFriendResult(player: Player, result: FriendOperationResult, targetName: String) {
+        player.sendMessage(Component.text(languageManager.getMessage("friend.result_${result.name.lowercase()}", targetName)))
     }
 
     private fun createGameMenuConfig(): YamlConfiguration {
@@ -842,14 +1121,14 @@ class GameCenterMenuService(
                 languageManager.getMessage("room.owner_line", playerName(room.owner ?: room.players.firstOrNull() ?: UUID(0, 0)))
             ))
             val teams = teamService.getTeams(room.id).take(MAX_RENDER_TEAMS)
-            multi(columns = if (teams.isEmpty()) SOLO_MEMBER_COLUMNS else teams.size.coerceAtLeast(1))
+            message("members", roomPlayerListText(room, teams))
+            multi(columns = 3)
             button("join", languageManager.getMessage("menu.button_join_room"), "kgc:join ${room.id}")
             button("start", languageManager.getMessage("menu.button_start_room"), "kgc:start ${room.id}")
             button("stats", languageManager.getMessage("menu.button_stats"), "kgc:open-stats ${room.module.id}")
             button("leave", languageManager.getMessage("menu.button_leave"), "kgc:leave")
             button("close_room", languageManager.getMessage("menu.button_close_room"), "kgc:close-room ${room.id}")
             button("refresh", languageManager.getMessage("menu.button_refresh"), detailAction)
-            renderRoomMembers(room, teams, roomsGameId, roomsGroup)
             exit(roomListAction(roomsGameId, roomsGroup), languageManager.getMessage("menu.button_back"))
         }
     }
@@ -857,11 +1136,12 @@ class GameCenterMenuService(
     /** 构建成员操作菜单，并把来源玩法筛选保留到返回房间详情的动作。 */
     private fun memberMenuConfig(
         room: GameRoom,
+        viewer: Player,
         targetId: UUID,
         roomsGameId: String?,
         roomsGroup: String?
     ): YamlConfiguration {
-        templateMemberMenuConfig(room, targetId, roomsGameId, roomsGroup)?.let { return it }
+        templateMemberMenuConfig(room, viewer, targetId, roomsGameId, roomsGroup)?.let { return it }
 
         val owner = room.owner
         val isOwner = owner == targetId
@@ -883,6 +1163,7 @@ class GameCenterMenuService(
                 languageManager.getMessage("menu.button_kick_player"),
                 memberOperationAction("kick-player", room.id, targetId, roomsGameId, roomsGroup)
             )
+            addFriendButtons(this, viewer, targetId)
             exit(roomDetailAction(room.id, roomsGameId, roomsGroup), languageManager.getMessage("menu.button_back"))
         }
     }
@@ -921,6 +1202,7 @@ class GameCenterMenuService(
             "room.owner_line" to languageManager.getMessage("room.owner_line", playerName(room.owner ?: room.players.firstOrNull() ?: UUID(0, 0)))
         )
         templateService.replacePlaceholders(config, values)
+        renderDynamicBodies(config, room)
         replaceLegacyMenuAction(
             config,
             "Bottom.buttons.refresh.actions",
@@ -940,6 +1222,7 @@ class GameCenterMenuService(
     /** 从 YAML 模板生成带来源玩法筛选上下文的成员菜单。 */
     private fun templateMemberMenuConfig(
         room: GameRoom,
+        viewer: Player,
         targetId: UUID,
         roomsGameId: String?,
         roomsGroup: String?
@@ -951,7 +1234,7 @@ class GameCenterMenuService(
             config,
             templateService.buildContext(
                 pluginName = plugin.name,
-                player = Bukkit.getPlayer(targetId) ?: return config,
+                player = viewer,
                 room = room,
                 game = room.definition,
                 target = Bukkit.getPlayer(targetId),
@@ -997,6 +1280,7 @@ class GameCenterMenuService(
             "kgc:open-room ${room.id}",
             roomDetailAction(room.id, roomsGameId, roomsGroup)
         )
+        addFriendButtons(config, viewer, targetId)
         return config
     }
 
@@ -1020,6 +1304,56 @@ class GameCenterMenuService(
                 "room_rows" -> renderRoomRows(config, "Bottom.buttons", key, section, gameId, roomsGroup)
             }
         }
+    }
+
+    /** 将房间玩家列表 TYPE 替换为 KaMenu 可渲染的点击文本消息。 */
+    private fun renderDynamicBodies(config: YamlConfiguration, room: GameRoom) {
+        val bodies = config.getConfigurationSection("Body") ?: return
+        bodies.getKeys(false).forEach { key ->
+            val section = bodies.getConfigurationSection(key) ?: return@forEach
+            if (!section.getString("TYPE").equals("room_player_list", ignoreCase = true)) return@forEach
+            section.set("TYPE", null)
+            section.set("type", "message")
+            section.set("width", section.getInt("width", 320).coerceIn(1, 1024))
+            section.set("text", roomPlayerListText(room, teamService.getTeams(room.id).take(MAX_RENDER_TEAMS)))
+        }
+    }
+
+    /** 生成带头像、房主星标、成员操作和加入队伍动作的房间 Body 文本。 */
+    private fun roomPlayerListText(room: GameRoom, teams: List<GameTeam>): List<String> {
+        if (teams.isEmpty()) {
+            val rows = room.players.toList().chunked(SOLO_MEMBER_COLUMNS).map { members ->
+                members.joinToString(" ") { playerId -> clickableRoomPlayer(room, playerId) }
+            }
+            return listOf(languageManager.getMessage("menu.player_list_header")) +
+                rows.ifEmpty { listOf(languageManager.getMessage("menu.member_empty")) }
+        }
+
+        return buildList {
+            teams.forEach { team ->
+                add(languageManager.getMessage("menu.team_players_header", team.displayName))
+                val members = teamService.getMembers(room.id, team.id).filter(room.players::contains)
+                val memberText = members.joinToString(" ") { clickableRoomPlayer(room, it, team) }
+                val joinText = "<click:run_command:/kgc teamjoin ${room.id} ${team.id}>" +
+                    languageManager.getMessage("menu.join_team_text", team.displayName) +
+                    "</click>"
+                add(listOf(memberText, joinText).filter(String::isNotBlank).joinToString(" "))
+            }
+            val ungrouped = teamService.getUngroupedPlayers(room.id, room.players)
+            if (ungrouped.isNotEmpty()) {
+                add(languageManager.getMessage("menu.ungrouped_players_header"))
+                add(ungrouped.joinToString(" ") { clickableRoomPlayer(room, it) })
+            }
+        }
+    }
+
+    private fun clickableRoomPlayer(room: GameRoom, playerId: UUID, team: GameTeam? = null): String {
+        val name = playerName(playerId)
+        val ownerMark = if (room.owner == playerId) "★ " else ""
+        val colorStart = team?.color?.let { "<color:#${it.asHexString().removePrefix("#")}>" }.orEmpty()
+        val colorEnd = if (colorStart.isBlank()) "" else "</color>"
+        val text = "&r<head:$name> $colorStart[$ownerMark$name]$colorEnd"
+        return "<text=`$text`;command=`/kgc roommember ${room.id} $playerId`>"
     }
 
     private fun renderGameList(
@@ -1779,13 +2113,19 @@ class GameCenterMenuService(
         return plugin.server.pluginManager.getPlugin("KaMenu")?.isEnabled == true
     }
 
+    /** 为旧版无玩法参数动作选择首个已启用托管玩法或通用定义。 */
+    private fun defaultGameId(): String? {
+        return managedGameCatalog.enabled().firstOrNull()?.globalId
+            ?: roomManager.listDefinitions().firstOrNull { it.enabled }?.id
+    }
+
     companion object {
         private const val ACTION_NAMESPACE = "kgc"
-        private const val DEFAULT_GAME_ID = "parkour"
         private const val SOLO_MEMBER_COLUMNS = 3
         private const val MAX_RENDER_TEAMS = 4
         private const val TEAM_MEMBER_SLOTS = 6
         private const val ROOM_INFO_BUTTON_WIDTH = 300
         private const val ROOM_ACTION_BUTTON_WIDTH = 54
+        private const val ROOM_DIALOG_REFRESH_DELAY_TICKS = 5L
     }
 }

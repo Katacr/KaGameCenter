@@ -1,6 +1,8 @@
 package org.katacr.kagamecenter.bedwars
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.bossbar.BossBar
+import net.kyori.adventure.text.JoinConfiguration
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.title.Title
@@ -83,6 +85,9 @@ import org.katacr.kaGameCenter.game.GameRoomManager
 import org.katacr.kaGameCenter.game.GameSession
 import org.katacr.kaGameCenter.game.GameState
 import org.katacr.kaGameCenter.display.SidebarBoardRenderer
+import org.katacr.kaGameCenter.display.GameBossBarStatus
+import org.katacr.kaGameCenter.display.IconTextParser
+import org.katacr.kaGameCenter.display.PlayerStatusSide
 import org.katacr.kaGameCenter.i18n.ModuleLanguage
 import org.katacr.kaGameCenter.nametag.NametagCollisionRule
 import org.katacr.kaGameCenter.nametag.NametagVisibility
@@ -125,12 +130,14 @@ import org.katacr.kaGameCenter.event.GameTeamEliminatedEvent
 import org.katacr.kaGameCenter.event.GameTimelineStageChangedEvent
 import org.katacr.kaGameCenter.resource.RoomResourceScope
 import org.katacr.kaGameCenter.resource.RoomResourceScopeService
+import org.katacr.kaGameCenter.entity.RoomPresentationService
+import org.katacr.kaGameCenter.reconnect.RoomDisconnectSnapshot
+import org.katacr.kaGameCenter.reconnect.RoomReconnectStateService
 import org.katacr.kaGameCenter.spectator.SpectatorMode
 import org.katacr.kaGameCenter.spectator.SpectatorService
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import org.bukkit.potion.PotionType
-import org.bukkit.util.EulerAngle
 import org.bukkit.util.Vector
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -160,6 +167,8 @@ class BedWarsGameSession(
     private val eliminationService: PlayerEliminationService,
     private val spectatorService: SpectatorService,
     private val roomResourceScopeService: RoomResourceScopeService,
+    private val roomPresentationService: RoomPresentationService,
+    private val reconnectStateService: RoomReconnectStateService,
     private val velocityBridgeService: VelocityBridgeService
 ) : GameSession {
     private val vaultEconomy = BedWarsVaultEconomy(plugin)
@@ -190,7 +199,6 @@ class BedWarsGameSession(
     private val lastCombatHits = linkedMapOf<UUID, BedWarsLastHitState>()
     private val lastSpecialMobHits = linkedMapOf<UUID, BedWarsSpecialMobHitState>()
     private val pendingDeathCauses = linkedMapOf<UUID, EntityDamageEvent.DamageCause>()
-    private val disconnectStates = linkedMapOf<UUID, BedWarsDisconnectState>()
     private val lastShoutTicks = linkedMapOf<UUID, Int>()
     private val inactivitySeconds = linkedMapOf<UUID, Int>()
     private val afkPlayers = linkedSetOf<UUID>()
@@ -240,6 +248,57 @@ class BedWarsGameSession(
 
     override fun usesCustomScoreboard(): Boolean = moduleConfig.lobbySidebarEnabled || moduleConfig.sidebarEnabled
     override fun usesCustomActionBar(): Boolean = true
+    /** 为核心通用 BossBar 提供全部队伍、空队提示和实时玩家状态头像。 */
+    override fun bossBarStatus(): GameBossBarStatus? {
+        if (teamStates.isEmpty()) return null
+        val seconds = phaseTimer.secondsLeft.coerceAtLeast(0)
+        return GameBossBarStatus(
+            left = PlayerStatusSide(label = bossBarTeamGroups()),
+            center = Component.text(formatAvatarBossBarTime(seconds), NamedTextColor.WHITE),
+            right = PlayerStatusSide(),
+            progress = 1.0f,
+            color = BossBar.Color.BLUE
+        )
+    }
+
+    /** 按配置顺序生成队伍头像段，只有空队使用“[无/None]”。 */
+    private fun bossBarTeamGroups(): Component {
+        val groups = teamStates.values.map { team ->
+            val members = playerStates.entries
+                .filter { (playerId, state) ->
+                    playerId in room.players &&
+                        state.participant &&
+                        state.teamId.equals(team.config.id, ignoreCase = true)
+                }
+                .sortedBy { (playerId, _) -> playerName(playerId).lowercase() }
+            val content = if (members.isEmpty()) {
+                Component.text(language.getMessage("bedwars.bossbar_empty_team"), NamedTextColor.GRAY)
+            } else {
+                Component.join(
+                    JoinConfiguration.separator(Component.space()),
+                    members.map { (playerId, state) ->
+                        val unavailable = state.eliminated || state.respawning
+                        val colorCode = if (unavailable) "&c" else "&r"
+                        val color = if (unavailable) NamedTextColor.RED else NamedTextColor.WHITE
+                        IconTextParser.parse("$colorCode<head:${playerName(playerId)}>").color(color)
+                    }
+                )
+            }
+            val group = Component.empty()
+                .append(Component.text(team.config.displayName, team.config.color.textColor))
+            if (members.isEmpty()) {
+                group.append(Component.text("[", NamedTextColor.GRAY))
+                    .append(content)
+                    .append(Component.text("]", NamedTextColor.GRAY))
+            } else {
+                group.append(Component.space()).append(content)
+            }
+        }
+        return Component.join(
+            JoinConfiguration.separator(Component.text(" | ", NamedTextColor.DARK_GRAY)),
+            groups
+        )
+    }
     override fun usesCustomTabHeaderFooter(): Boolean = moduleConfig.tabHeaderFooterEnabled
 
     /** 任一阶段启用参考玩家列表格式时，由 Session 统一维护房间内名称。 */
@@ -335,6 +394,8 @@ class BedWarsGameSession(
             )
             return
         }
+        teamStates.clear()
+        gameConfig?.teams.orEmpty().forEach { teamStates[it.id] = BedWarsTeamState(it) }
         val teamCapacity = gameConfig?.teams.orEmpty().sumOf(BedWarsTeamConfig::maxPlayers)
         room.definition?.let { definition ->
             val maxPlayers = definition.maxPlayers.coerceIn(2, teamCapacity)
@@ -438,14 +499,11 @@ class BedWarsGameSession(
         lastSpecialMobHits.remove(player.uniqueId)
         lastShoutTicks.remove(player.uniqueId)
         markPlayerActive(player)
-        disconnectStates.remove(player.uniqueId)
         state.participant = true
         state.eliminated = false
         participants.add(player.uniqueId)
-        val target = if (phase == BedWarsPhase.COUNTDOWN) teamSpawn(teamId) else gameConfig?.lobby?.toLocation(world)
-        player.teleport(target ?: world.spawnLocation)
+        player.teleport(gameConfig?.lobby?.toLocation(world) ?: world.spawnLocation)
         setTeamNametag(player, teamId)
-        if (phase == BedWarsPhase.COUNTDOWN) spawnBedHologram(player, teamId)
         if (phase == BedWarsPhase.WAITING) givePreGameItems(player)
         playSoundRule(listOf(player), moduleConfig.joinAllowedSound)
         scheduleHalloweenAmbience(player)
@@ -473,7 +531,6 @@ class BedWarsGameSession(
         sidebarLineTemplates.remove(player.uniqueId)
         sidebarLineFrames.remove(player.uniqueId)
         lastCombatHits.entries.removeIf { it.value.attackerId == player.uniqueId }
-        disconnectStates.remove(player.uniqueId)
         removeBedHologram(player.uniqueId)
         val state = playerStates[player.uniqueId]
         if (phase == BedWarsPhase.WAITING) {
@@ -556,7 +613,6 @@ class BedWarsGameSession(
         lastCombatHits.clear()
         lastSpecialMobHits.clear()
         pendingDeathCauses.clear()
-        disconnectStates.clear()
         lastShoutTicks.clear()
         inactivitySeconds.clear()
         afkPlayers.clear()
@@ -592,13 +648,9 @@ class BedWarsGameSession(
             state.permanentProductIds.clear()
             state.enteredEnemyBases.clear()
             resetPlayer(player, GameMode.ADVENTURE, clearInventory = true)
-            player.teleport(teamSpawn(teamId) ?: return@forEach)
+            player.teleport(gameConfig?.lobby?.toLocation(player.world) ?: player.world.spawnLocation)
             setTeamNametag(player, teamId)
         }
-        indexBeds()
-        prepareGenerators()
-        spawnShopNpcs()
-        spawnBedHolograms()
         phase = BedWarsPhase.COUNTDOWN
         phaseTimer.resetSeconds(moduleConfig.countdownSeconds)
         room.state = GameState.COUNTDOWN
@@ -710,7 +762,8 @@ class BedWarsGameSession(
             entity !is Player &&
                 entity !is Painting &&
                 entity !is ItemFrame &&
-                entity.uniqueId !in trackedEntities
+                entity.uniqueId !in trackedEntities &&
+                !roomResourceScopeService.isEntityTracked(room.id, entity.uniqueId)
         }.forEach(Entity::remove)
     }
 
@@ -851,13 +904,6 @@ class BedWarsGameSession(
         state.disconnected = true
         updatePlayerCollision(player, state.teamId)
         removeBedHologram(player.uniqueId)
-        disconnectStates[player.uniqueId] = BedWarsDisconnectState(
-            player.location.clone(),
-            player.inventory.contents.filterNotNull()
-                .filter { it.type in DEATH_TRANSFER_RESOURCES }
-                .map(ItemStack::clone),
-            resolveKiller(player)?.uniqueId
-        )
         inactivitySeconds.remove(player.uniqueId)
         afkPlayers.remove(player.uniqueId)
         playerBaseRegions.remove(player.uniqueId)
@@ -893,7 +939,6 @@ class BedWarsGameSession(
     /** 恢复宽限期内返回玩家的阶段、位置、装备强化和显示。 */
     override fun onPlayerReconnect(player: Player) {
         val state = playerStates[player.uniqueId] ?: return
-        disconnectStates.remove(player.uniqueId)
         state.disconnected = false
         markPlayerActive(player)
         playerRuntimeStateService.captureIfAbsent(room.id, player)
@@ -962,7 +1007,7 @@ class BedWarsGameSession(
     /** 宽限到期后把离线玩家最终淘汰并释放模块运行状态。 */
     override fun onPlayerReconnectExpired(playerId: UUID) {
         val state = playerStates[playerId] ?: return
-        val disconnected = disconnectStates.remove(playerId)
+        val disconnected = reconnectStateService.get(room.id, playerId)
         lastShoutTicks.remove(playerId)
         if (phase == BedWarsPhase.WAITING) {
             playerStates.remove(playerId)
@@ -982,7 +1027,7 @@ class BedWarsGameSession(
         playerRuntimeStateService.clear(room.id, playerId)
         if (alreadyEliminated) return
         val name = Bukkit.getOfflinePlayer(playerId).name ?: playerId.toString().take(8)
-        val attackerId = disconnected?.attackerId
+        val attackerId = disconnected?.lastDamagerId
         val finalDeath = phase == BedWarsPhase.RUNNING && teamStates[state.teamId]?.bedAlive == false
         if (finalDeath) {
             state.finalDeaths++
@@ -1106,7 +1151,6 @@ class BedWarsGameSession(
         lastCombatHits.clear()
         lastSpecialMobHits.clear()
         pendingDeathCauses.clear()
-        disconnectStates.clear()
         lastShoutTicks.clear()
         inactivitySeconds.clear()
         afkPlayers.clear()
@@ -2422,7 +2466,7 @@ class BedWarsGameSession(
 
     private fun tickCountdown() {
         val onlinePlayers = onlineParticipantCount()
-        if (onlinePlayers < effectiveMinPlayers()) {
+        if (onlinePlayers < effectiveAutoStartMinPlayers()) {
             cancelCountdown()
             return
         }
@@ -2439,6 +2483,10 @@ class BedWarsGameSession(
             }
         }
         if (!phaseTimer.tick()) return
+        closeRoomDialogs()
+        indexBeds()
+        prepareGenerators()
+        spawnShopNpcs()
         phase = BedWarsPhase.RUNNING
         phaseTimer.resetSeconds(moduleConfig.durationSeconds)
         room.state = GameState.RUNNING
@@ -2446,16 +2494,29 @@ class BedWarsGameSession(
             resetPlayer(player, GameMode.SURVIVAL, clearInventory = true)
             val state = playerStates[player.uniqueId] ?: return@forEach
             giveLoadout(player, state)
+            teamSpawn(state.teamId)?.let(player::teleport)
             state.firstSpawned = true
             setTeamNametag(player, state.teamId)
             Bukkit.getPluginManager().callEvent(GamePlayerFirstSpawnedEvent(room, player, state.teamId))
         }
+        spawnBedHolograms()
         updateTimelineStage()
         playSoundRule(roomBroadcastService.players(room), moduleConfig.gameStartSound)
         roomBroadcastService.localized(room, language, "bedwars.started", includeSpectators = true)
         updateDisplays()
         updateTabHeaderFooters()
         updateTabPlayerNames()
+    }
+
+    /** 正式开局时关闭当前房间全部在线成员和观战者仍打开的 Paper Dialog。 */
+    private fun closeRoomDialogs() {
+        (room.players + room.spectators).mapNotNull(Bukkit::getPlayer).forEach { player ->
+            runCatching(player::closeDialog).onFailure { error ->
+                plugin.logger.warning(
+                    "Failed to close game-start dialog for ${player.uniqueId} in room ${room.id}: ${error.message}"
+                )
+            }
+        }
     }
 
     /** 按参考有效路径为最后 4 秒选择独立音效，其余提示节点使用通用规则。 */
@@ -3332,7 +3393,7 @@ class BedWarsGameSession(
             updateTabPlayerName(player)
             player.sendMessage(Component.text(language.getMessage("bedwars.team_selected", selectedTeam.displayName)))
         }
-        if (onlineParticipantCount() >= effectiveMinPlayers()) roomManager.startRoom(room.id)
+        if (onlineParticipantCount() >= effectiveAutoStartMinPlayers()) roomManager.startRoom(room.id)
     }
 
     /** 返回当前在线且仍占用参赛席位的玩家数，断线宽限席位不计入开局判定。 */
@@ -3343,6 +3404,12 @@ class BedWarsGameSession(
     /** 返回当前房间实际使用的最低开局人数。 */
     private fun effectiveMinPlayers(): Int {
         return room.definition?.minPlayers ?: moduleConfig.minPlayers
+    }
+
+    /** 返回自动进入开局倒计时所需人数，并保证不低于房间最低人数且不高于容量。 */
+    private fun effectiveAutoStartMinPlayers(): Int {
+        val maxPlayers = room.definition?.maxPlayers ?: moduleConfig.maxPlayers
+        return moduleConfig.autoStartMinPlayers.coerceIn(effectiveMinPlayers(), maxPlayers)
     }
 
     /** 判断玩家是否应进入只对当前房间观战群体开放的聊天受众。 */
@@ -3377,7 +3444,7 @@ class BedWarsGameSession(
 
     /** 校验喊话内容和冷却，并生成全房间聊天路由。 */
     private fun routeShout(player: Player, message: String): GameChatRoute? {
-        if (!player.hasPermission(PERMISSION_SHOUT) && !player.hasPermission("kagamecenter.admin")) {
+        if (!player.hasPermission(BedWarsPermissions.SHOUT) && !player.hasPermission("kagamecenter.admin")) {
             player.sendMessage(Component.text(language.getMessage("bedwars.chat_shout_no_permission")))
             return null
         }
@@ -3385,7 +3452,7 @@ class BedWarsGameSession(
             player.sendMessage(Component.text(language.getMessage("bedwars.chat_shout_empty")))
             return null
         }
-        val bypassCooldown = player.hasPermission(PERMISSION_SHOUT_BYPASS) ||
+        val bypassCooldown = player.hasPermission(BedWarsPermissions.SHOUT_BYPASS) ||
             player.hasPermission("kagamecenter.admin")
         val cooldownTicks = moduleConfig.shoutCooldownSeconds * 20
         val lastShoutTick = lastShoutTicks[player.uniqueId]
@@ -3411,9 +3478,11 @@ class BedWarsGameSession(
     /** 根据半满和满员阈值只缩短、不延长当前开局倒计时。 */
     private fun shortenCountdownForPopulation(onlinePlayers: Int) {
         val maxPlayers = (room.definition?.maxPlayers ?: moduleConfig.maxPlayers).coerceAtLeast(1)
+        val autoStartMinPlayers = effectiveAutoStartMinPlayers()
+        if (maxPlayers <= autoStartMinPlayers) return
         val targetSeconds = when {
             onlinePlayers >= maxPlayers -> moduleConfig.fullArenaCountdownSeconds
-            onlinePlayers > effectiveMinPlayers() && onlinePlayers >= maxPlayers / 2 -> {
+            onlinePlayers > autoStartMinPlayers && onlinePlayers >= maxPlayers / 2 -> {
                 moduleConfig.halfArenaCountdownSeconds
             }
             else -> return
@@ -3434,6 +3503,7 @@ class BedWarsGameSession(
         timelineInitialized = false
         currentTimelineStageId = null
         teamStates.clear()
+        gameConfig?.teams.orEmpty().forEach { teamStates[it.id] = BedWarsTeamState(it) }
         bedBlocks.clear()
         participants.clear()
         eliminatedTeams.clear()
@@ -3495,23 +3565,17 @@ class BedWarsGameSession(
         val team = teamStates[teamId] ?: return
         val world = room.world ?: return
         val location = team.config.bed?.toLocation(world)?.block?.location?.add(0.5, 1.0, 0.5) ?: return
-        val hologram = world.spawn(location, ArmorStand::class.java) {
-            it.setGravity(false)
-            it.isVisible = false
-            it.isMarker = true
-            it.isSmall = true
-            it.isInvulnerable = true
-            it.isSilent = true
-            it.isPersistent = true
-            it.removeWhenFarAway = false
-            it.customName(Component.text(language.getMessage(
+        val hologram = roomPresentationService.spawnText(
+            room.id,
+            location,
+            Component.text(language.getMessage(
                 if (team.bedAlive) "bedwars.bed_hologram_defend" else "bedwars.bed_hologram_destroyed"
-            )))
-            it.isCustomNameVisible = true
-            it.addScoreboardTag("kgc_bedwars_bed_hologram")
-        }
+            )),
+            ownerId = viewer.uniqueId,
+            type = "bed-hologram",
+            scoreboardTag = "kgc_bedwars_bed_hologram"
+        )
         bedHolograms[viewer.uniqueId] = hologram.uniqueId
-        trackEntity(hologram, viewer.uniqueId, "bed-hologram")
         (room.players + room.spectators).mapNotNull(Bukkit::getPlayer).forEach { player ->
             if (player.uniqueId == viewer.uniqueId) {
                 player.showEntity(plugin, hologram)
@@ -3543,8 +3607,7 @@ class BedWarsGameSession(
         val team = teamStates[teamId] ?: return
         bedHolograms.forEach { (viewerId, entityId) ->
             if (playerStates[viewerId]?.teamId != teamId) return@forEach
-            val hologram = Bukkit.getEntity(entityId) as? ArmorStand ?: return@forEach
-            hologram.customName(Component.text(language.getMessage(
+            roomPresentationService.updateText(entityId, Component.text(language.getMessage(
                 if (team.bedAlive) "bedwars.bed_hologram_defend" else "bedwars.bed_hologram_destroyed"
             )))
         }
@@ -3553,9 +3616,7 @@ class BedWarsGameSession(
     /** 移除一个玩家对应的床提示并解除房间资源登记。 */
     private fun removeBedHologram(viewerId: UUID) {
         val entityId = bedHolograms.remove(viewerId) ?: return
-        Bukkit.getEntity(entityId)?.remove()
-        resourceScope?.releaseEntity(entityId)
-        trackedEntities.remove(entityId)
+        roomPresentationService.remove(room.id, entityId)
     }
 
     private fun spawnShopNpcs() {
@@ -3578,13 +3639,7 @@ class BedWarsGameSession(
             teamMaxPlayers <= 1 -> "bedwars.shop_solo_upgrade_name"
             else -> "bedwars.shop_upgrade_name"
         }
-        val villager = location.world.spawn(location, Villager::class.java) {
-            it.setAI(false)
-            it.isInvulnerable = true
-            it.isCollidable = false
-            it.isSilent = true
-            it.isPersistent = true
-            it.removeWhenFarAway = false
+        val villager = roomPresentationService.spawnNpc(room.id, location, Villager::class.java, type = "shop") {
             it.profession = if (kind == BedWarsShopKind.ITEM) Villager.Profession.WEAPONSMITH else Villager.Profession.LIBRARIAN
             if (moduleConfig.shop.hologramsEnabled) {
                 it.customName(null)
@@ -3596,7 +3651,6 @@ class BedWarsGameSession(
             it.addScoreboardTag("kgc_bedwars_shop")
         }
         shopNpcs[villager.uniqueId] = kind
-        trackEntity(villager, type = "shop")
         if (moduleConfig.shop.hologramsEnabled) {
             shopHolograms[villager.uniqueId] = listOf(
                 spawnShopHologramLine(
@@ -3615,31 +3669,19 @@ class BedWarsGameSession(
 
     /** 生成一行公开可见、无碰撞且随房间清理的商店提示。 */
     private fun spawnShopHologramLine(location: Location, text: String, kind: String): ArmorStand {
-        val hologram = location.world.spawn(location, ArmorStand::class.java) {
-            it.setGravity(false)
-            it.isVisible = false
-            it.isMarker = true
-            it.isSmall = true
-            it.isInvulnerable = true
-            it.isSilent = true
-            it.isPersistent = true
-            it.removeWhenFarAway = false
-            it.customName(Component.text(text))
-            it.isCustomNameVisible = true
-            it.addScoreboardTag("kgc_bedwars_shop_hologram_$kind")
-        }
-        trackEntity(hologram, type = "shop-hologram-$kind")
-        return hologram
+        return roomPresentationService.spawnText(
+            room.id,
+            location,
+            Component.text(text),
+            type = "shop-hologram-$kind",
+            scoreboardTag = "kgc_bedwars_shop_hologram_$kind"
+        )
     }
 
     /** 移除商店村民及其全息，避免重复准备房间时留下旧实体。 */
     private fun removeShopNpcs() {
         val entityIds = shopNpcs.keys + shopHolograms.values.flatten()
-        entityIds.forEach { entityId ->
-            Bukkit.getEntity(entityId)?.remove()
-            resourceScope?.releaseEntity(entityId)
-            trackedEntities.remove(entityId)
-        }
+        roomPresentationService.removeAll(room.id, entityIds)
         shopNpcs.clear()
         shopHolograms.clear()
     }
@@ -5488,13 +5530,7 @@ class BedWarsGameSession(
             language.getMessage("bedwars.phase_${phase.name.lowercase()}")
         }
         if (sidebarEnabled) {
-            val teamLines = teamStates.values.take(8).map { team ->
-                val alive = playerStates.values.count {
-                    it.teamId == team.config.id && it.participant && !it.eliminated
-                }
-                val bed = if (team.bedAlive) "✓" else "✗"
-                language.getMessage("bedwars.scoreboard_team", team.config.displayName, bed, alive)
-            }
+            val teamLines = teamStates.values.take(8).map(::sidebarTeamLine)
             val statistic = gameConfig?.sidebarTopStatistic ?: moduleConfig.sidebarTopStatistic
             val hideMissing = gameConfig?.sidebarTopHideMissing ?: moduleConfig.sidebarTopHideMissing
             val leaderLines = if (phase == BedWarsPhase.RESULT) {
@@ -5503,7 +5539,7 @@ class BedWarsGameSession(
                         ?: Bukkit.getOfflinePlayer(playerId).name
                         ?: playerId.toString().take(8)
                     language.getMessage(
-                        "bedwars.scoreboard_result_entry",
+                        "bedwars.scoreboard_result_entry_colored",
                         index + 1,
                         playerName,
                         statistic.valueOf(entry)
@@ -5531,8 +5567,8 @@ class BedWarsGameSession(
             val mapName = configuredGame?.localId ?: room.id
             val mapGroup = configuredGame?.selectorGroup ?: "default"
             val winnerLine = winnerName?.let { name ->
-                language.getMessage("bedwars.scoreboard_winner", name)
-            } ?: language.getMessage("bedwars.tab_role_draw")
+                language.getMessage("bedwars.scoreboard_winner_colored", winnerColor + name)
+            } ?: language.getMessage("bedwars.scoreboard_draw_colored")
             val template = tabHeaderFooterTemplate(player, state)
             val templateUsesMoney = language.getMessageList(template.sidebarLinesKey).any { "{money}" in it }
             val moneyValue = if (templateUsesMoney) sidebarMoneyBalance(player) else null
@@ -5541,18 +5577,21 @@ class BedWarsGameSession(
             val currentExperience = sidebarLevelProgress?.levelExperience?.let(::formatLevelNumber)
             val requiredExperience = sidebarLevelProgress?.nextLevelExperience?.let(::formatLevelNumber)
             val lineValues = linkedMapOf(
-                "{phase}" to listOf(language.getMessage("bedwars.scoreboard_phase", phaseName)),
-                "{time}" to listOf(language.getMessage("bedwars.scoreboard_time", phaseTimer.secondsLeft)),
+                "{phase}" to listOf(language.getMessage("bedwars.scoreboard_phase_colored", phaseName)),
+                "{time}" to listOf(language.getMessage("bedwars.scoreboard_time_colored", phaseTimer.secondsLeft)),
                 "{players}" to listOf(language.getMessage(
-                    "bedwars.scoreboard_players",
+                    "bedwars.scoreboard_players_colored",
                     room.players.size,
                     maxPlayers
                 )),
                 "{role}" to listOf(language.getMessage(
-                    "bedwars.scoreboard_role",
+                    "bedwars.scoreboard_role_colored",
                     tabRoleLabel(player, state)
                 )),
-                "{team}" to listOf(language.getMessage("bedwars.scoreboard_player_team", teamName)),
+                "{team}" to listOf(language.getMessage(
+                    "bedwars.scoreboard_player_team_colored",
+                    state?.teamId?.let(teamStates::get)?.config?.color?.let(::teamLegacyColor).orEmpty() + teamName
+                )),
                 "{money}" to listOfNotNull(moneyValue),
                 "{player}" to listOf(player.name),
                 "{playerName}" to listOf(player.name),
@@ -5576,19 +5615,19 @@ class BedWarsGameSession(
                 "{nextEvent}" to listOfNotNull(nextEventLine()),
                 "{teams}" to teamLines,
                 "{kills}" to state?.let {
-                    listOf(language.getMessage("bedwars.scoreboard_kills", it.kills))
+                    listOf(language.getMessage("bedwars.scoreboard_kills_colored", it.kills))
                 }.orEmpty(),
                 "{finalKills}" to state?.let {
-                    listOf(language.getMessage("bedwars.scoreboard_final_kills", it.finalKills))
+                    listOf(language.getMessage("bedwars.scoreboard_final_kills_colored", it.finalKills))
                 }.orEmpty(),
                 "{beds}" to state?.let {
-                    listOf(language.getMessage("bedwars.scoreboard_beds", it.bedsBroken))
+                    listOf(language.getMessage("bedwars.scoreboard_beds_colored", it.bedsBroken))
                 }.orEmpty(),
                 "{deaths}" to state?.let {
-                    listOf(language.getMessage("bedwars.scoreboard_deaths", it.deaths))
+                    listOf(language.getMessage("bedwars.scoreboard_deaths_colored", it.deaths))
                 }.orEmpty(),
                 "{finalDeaths}" to state?.let {
-                    listOf(language.getMessage("bedwars.scoreboard_final_deaths", it.finalDeaths))
+                    listOf(language.getMessage("bedwars.scoreboard_final_deaths_colored", it.finalDeaths))
                 }.orEmpty(),
                 "{winner}" to if (phase == BedWarsPhase.RESULT) {
                     listOf(winnerLine)
@@ -5608,14 +5647,14 @@ class BedWarsGameSession(
                 },
                 "{resultTop}" to if (phase == BedWarsPhase.RESULT) {
                     listOf(language.getMessage(
-                        "bedwars.scoreboard_result_top",
+                        "bedwars.scoreboard_result_top_colored",
                         language.getMessage(statistic.languageKey)
                     ))
                 } else {
                     emptyList()
                 },
                 "{leaders}" to leaderLines,
-                "{room}" to listOf(language.getMessage("bedwars.scoreboard_room", room.id))
+                "{room}" to listOf(language.getMessage("bedwars.scoreboard_room_colored", room.id))
             )
             addSidebarTeamTokens(lineValues, state)
             val inlineValues = linkedMapOf(
@@ -5679,6 +5718,7 @@ class BedWarsGameSession(
                 "bedwars_${room.id}",
                 sidebarTitle(),
                 lines,
+                maxLineLength = 128,
                 showHealthBelowName = showHealth,
                 showHealthInPlayerList = showHealth && moduleConfig.healthDisplayInTab,
                 healthLabel = healthLabel
@@ -5786,7 +5826,7 @@ class BedWarsGameSession(
         val elapsedSeconds = gameElapsedTicks / 20
         val next = nextTimelineEntry(elapsedSeconds) ?: return null
         return language.getMessage(
-            "bedwars.scoreboard_next_event",
+            "bedwars.scoreboard_next_event_colored",
             language.getMessage(next.languageKey),
             formatEventTime(next.startSeconds - elapsedSeconds)
         )
@@ -5795,7 +5835,7 @@ class BedWarsGameSession(
     /** 返回玩家当前持久等级的 Sidebar 行。 */
     private fun levelLine(progress: BedWarsLevelProgress): String {
         return language.getMessage(
-            "bedwars.scoreboard_level",
+            "bedwars.scoreboard_level_colored",
             progress.level,
             progress.levelExperience,
             progress.nextLevelExperience
@@ -5813,8 +5853,51 @@ class BedWarsGameSession(
     private fun sidebarSpectatorTarget(player: Player): String? {
         val target = player.spectatorTarget as? Player ?: return null
         val targetState = playerStates[target.uniqueId] ?: return null
-        val teamName = teamStates[targetState.teamId]?.config?.displayName ?: targetState.teamId
-        return language.getMessage("bedwars.scoreboard_spectator_target", teamName, target.name)
+        val team = teamStates[targetState.teamId]
+        val teamName = team?.config?.color?.let(::teamLegacyColor).orEmpty() +
+            (team?.config?.displayName ?: targetState.teamId)
+        return language.getMessage("bedwars.scoreboard_spectator_target_colored", teamName, target.name)
+    }
+
+    /** 生成带队伍颜色、床状态、存活数和玩家存亡头像的 Sidebar 队伍行。 */
+    private fun sidebarTeamLine(team: BedWarsTeamState): String {
+        val members = playerStates.entries
+            .filter { (playerId, state) ->
+                playerId in room.players && state.participant && state.teamId == team.config.id
+            }
+            .sortedBy { (playerId, _) -> playerName(playerId).lowercase() }
+        val alive = members.count { !it.value.eliminated }
+        val bedStatus = language.getMessage(
+            if (team.bedAlive) {
+                "bedwars.scoreboard_team_status_alive"
+            } else {
+                "bedwars.scoreboard_team_status_eliminated"
+            }
+        )
+        val headTokens = members.take(SIDEBAR_TEAM_HEAD_LIMIT).map { (playerId, state) ->
+            val color = if (state.eliminated) "&c" else "&r"
+            "$color<head:${playerName(playerId)}>"
+        }
+        val renderLine: (String) -> String = { heads ->
+            language.getMessage(
+                "bedwars.scoreboard_team_colored",
+                teamLegacyColor(team.config.color),
+                team.config.displayName,
+                bedStatus,
+                alive,
+                heads
+            )
+        }
+        val visibleHeads = mutableListOf<String>()
+        for (headToken in headTokens) {
+            val candidateHeads = visibleHeads.plus(headToken).joinToString(" ")
+            val remaining = members.size - visibleHeads.size - 1
+            val candidateOverflow = remaining.takeIf { it > 0 }?.let { " &7+$it" }.orEmpty()
+            if (renderLine(candidateHeads + candidateOverflow).length > SIDEBAR_RAW_LINE_LIMIT) break
+            visibleHeads += headToken
+        }
+        val overflow = (members.size - visibleHeads.size).takeIf { it > 0 }?.let { " &7+$it" }.orEmpty()
+        return renderLine(visibleHeads.joinToString(" ") + overflow)
     }
 
     /** 添加参考每队动态 token 及当前玩家所属队伍的快捷 token。 */
@@ -6039,7 +6122,7 @@ class BedWarsGameSession(
             if (state.config.type != BedWarsGeneratorType.DIAMOND &&
                 state.config.type != BedWarsGeneratorType.EMERALD
             ) return@forEach
-            val base = state.config.point.toLocation(world).block.location.add(0.5, 1.3, 0.5)
+            val base = state.config.point.toLocation(world).add(0.0, 1.3, 0.0)
             val tier = spawnGeneratorHologramLine(
                 base.clone().add(0.0, 3.0, 0.0),
                 language.getMessage("bedwars.generator_hologram_tier", generatorTierLabel(state.tier)),
@@ -6064,20 +6147,15 @@ class BedWarsGameSession(
                 ),
                 "timer"
             )
-            val item = world.spawn(base.clone().add(0.0, 0.5, 0.0), ArmorStand::class.java) {
-                it.setGravity(false)
-                it.isVisible = false
-                it.isMarker = true
-                it.isInvulnerable = true
-                it.isSilent = true
-                it.isPersistent = true
-                it.removeWhenFarAway = false
-                it.equipment.helmet = ItemStack(
+            val item = roomPresentationService.spawnFloatingItem(
+                room.id,
+                base.clone().add(0.0, 0.5, 0.0),
+                ItemStack(
                     if (state.config.type == BedWarsGeneratorType.DIAMOND) Material.DIAMOND_BLOCK else Material.EMERALD_BLOCK
-                )
-                it.addScoreboardTag("kgc_bedwars_generator_item")
-            }
-            trackEntity(item, type = "generator-hologram-item")
+                ),
+                type = "generator-hologram-item",
+                scoreboardTag = "kgc_bedwars_generator_item"
+            )
             state.hologram = BedWarsGeneratorHologramState(
                 tier.uniqueId,
                 type.uniqueId,
@@ -6089,30 +6167,24 @@ class BedWarsGameSession(
 
     /** 生成一行无碰撞且由房间资源作用域管理的生成器提示。 */
     private fun spawnGeneratorHologramLine(location: Location, text: String, kind: String): ArmorStand {
-        val hologram = location.world.spawn(location, ArmorStand::class.java) {
-            it.setGravity(false)
-            it.isVisible = false
-            it.isMarker = true
-            it.isSmall = true
-            it.isInvulnerable = true
-            it.isSilent = true
-            it.isPersistent = true
-            it.removeWhenFarAway = false
-            it.customName(Component.text(text))
-            it.isCustomNameVisible = true
-            it.addScoreboardTag("kgc_bedwars_generator_hologram_$kind")
-        }
-        trackEntity(hologram, type = "generator-hologram-$kind")
-        return hologram
+        return roomPresentationService.spawnText(
+            room.id,
+            location,
+            Component.text(text),
+            type = "generator-hologram-$kind",
+            scoreboardTag = "kgc_bedwars_generator_hologram_$kind"
+        )
     }
 
     /** 按当前阶段和剩余生成 tick 刷新公共资源点提示。 */
     private fun updateGeneratorHologram(state: BedWarsGeneratorState) {
         val hologram = state.hologram ?: return
-        (Bukkit.getEntity(hologram.tierEntityId) as? ArmorStand)?.customName(
+        roomPresentationService.updateText(
+            hologram.tierEntityId,
             Component.text(language.getMessage("bedwars.generator_hologram_tier", generatorTierLabel(state.tier)))
         )
-        (Bukkit.getEntity(hologram.timerEntityId) as? ArmorStand)?.customName(
+        roomPresentationService.updateText(
+            hologram.timerEntityId,
             Component.text(language.getMessage(
                 "bedwars.generator_hologram_timer",
                 (state.ticksUntilSpawn.coerceAtLeast(0) + 19) / 20
@@ -6124,9 +6196,8 @@ class BedWarsGameSession(
     private fun rotateGeneratorHologram(state: BedWarsGeneratorState) {
         if (!moduleConfig.generatorRules.rotateHologramItems) return
         val hologram = state.hologram ?: return
-        val item = Bukkit.getEntity(hologram.itemEntityId) as? ArmorStand ?: return
         hologram.rotationDegrees = (hologram.rotationDegrees + 4.0) % 360.0
-        item.headPose = EulerAngle(0.0, Math.toRadians(hologram.rotationDegrees), 0.0)
+        roomPresentationService.rotateFloatingItem(hologram.itemEntityId, hologram.rotationDegrees)
     }
 
     /** 返回公共资源点使用的罗马数字阶段名称。 */
@@ -6141,16 +6212,12 @@ class BedWarsGameSession(
     private fun removeGeneratorHolograms() {
         generatorStates.forEach { state ->
             val hologram = state.hologram ?: return@forEach
-            listOf(
+            roomPresentationService.removeAll(room.id, listOf(
                 hologram.tierEntityId,
                 hologram.typeEntityId,
                 hologram.timerEntityId,
                 hologram.itemEntityId
-            ).forEach { entityId ->
-                Bukkit.getEntity(entityId)?.remove()
-                resourceScope?.releaseEntity(entityId)
-                trackedEntities.remove(entityId)
-            }
+            ))
             state.hologram = null
         }
     }
@@ -7278,15 +7345,21 @@ class BedWarsGameSession(
     }
 
     /** 在重连宽限到期后把 PvP 断线玩家携带的四类商店货币投放回断线点。 */
-    private fun dropDisconnectedResources(disconnected: BedWarsDisconnectState) {
+    private fun dropDisconnectedResources(disconnected: RoomDisconnectSnapshot) {
         val world = room.world ?: return
         val location = disconnected.location.clone().apply { this.world = world }
-        disconnected.resources.forEach { item ->
+        disconnected.inventoryContents.filter { it.type in DEATH_TRANSFER_RESOURCES }.forEach { item ->
             val dropped = world.dropItemNaturally(location, item.clone())
             dropped.pickupDelay = 0
             trackEntity(dropped, type = "disconnect-drop")
         }
     }
+
+    private fun playerName(playerId: UUID): String {
+        return Bukkit.getPlayer(playerId)?.name ?: Bukkit.getOfflinePlayer(playerId).name ?: playerId.toString().take(8)
+    }
+
+    private fun formatAvatarBossBarTime(seconds: Int): String = "%02d:%02d".format(seconds / 60, seconds % 60)
 
     /** 保存各阶段和身份对应的本地化 Tab 头尾及 Sidebar 行键。 */
     private enum class BedWarsTabHeaderFooterTemplate(
@@ -7380,9 +7453,9 @@ class BedWarsGameSession(
         const val METRIC_FINAL_DEATHS = "final-deaths"
         const val METRIC_BEDS_DESTROYED = "beds-destroyed"
         const val METRIC_LEVEL_EXPERIENCE = "level-experience"
-        const val PERMISSION_SHOUT = "kagamecenter.bedwars.shout"
-        const val PERMISSION_SHOUT_BYPASS = "kagamecenter.bedwars.shout.bypass"
         const val MAX_RECONNECT_RESPAWN_TICKS = 72_000L
+        const val SIDEBAR_TEAM_HEAD_LIMIT = 5
+        const val SIDEBAR_RAW_LINE_LIMIT = 128
         const val TAB_ACTIVE_PLAYER_ORDER = 2000
         const val TAB_TEAM_ORDER_STRIDE = 100
         const val XP_SOURCE_PER_MINUTE = "per-minute"

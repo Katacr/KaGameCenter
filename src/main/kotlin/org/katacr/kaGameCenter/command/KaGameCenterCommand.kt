@@ -19,10 +19,13 @@ import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.game.GameMapManager
 import org.katacr.kaGameCenter.game.GameRoomManager
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
+import org.katacr.kaGameCenter.friend.FriendCommandService
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
 import org.katacr.kaGameCenter.display.IconTextParser
 import org.katacr.kaGameCenter.menu.chest.ChestMenuService
 import org.katacr.kaGameCenter.packet.PacketDispatchService
+import org.katacr.kaGameCenter.reload.GameCenterReloadService
+import org.katacr.kaGameCenter.module.ManagedModuleReloadResult
 import java.time.Duration
 import java.util.UUID
 
@@ -34,6 +37,8 @@ class KaGameCenterCommand(
     private val managedGameCatalog: ManagedGameCatalogService,
     private val languageManager: LanguageManager,
     private val packetService: PacketDispatchService,
+    private val friendCommandService: FriendCommandService,
+    private val reloadService: GameCenterReloadService,
     private val moduleAdminCommands: Map<String, ModuleAdminCommand>
 ) : CommandExecutor, TabCompleter {
 
@@ -48,7 +53,9 @@ class KaGameCenterCommand(
         "create",
         "join",
         "quickjoin",
+        "friend",
         "leave",
+        "reload",
         "admin"
     )
 
@@ -59,12 +66,14 @@ class KaGameCenterCommand(
         "create",
         "start",
         "close",
-            "stats",
-            "packet",
-            "icon"
-        )
+        "stats",
+        "packet",
+        "icon"
+    )
 
     private val iconBossBars = linkedMapOf<UUID, BossBar>()
+    private val adminOnlySubCommands = setOf("admin", "reload")
+    private val reloadTargets = listOf("config", "lang", "model", "map")
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         when (args.firstOrNull()?.lowercase()) {
@@ -163,9 +172,37 @@ class KaGameCenterCommand(
                     sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_join")))
                     return true
                 }
-                val gameId = args.getOrNull(1) ?: "parkour"
+                val gameId = args.getOrNull(1)
+                    ?: managedGameCatalog.enabled().firstOrNull()?.globalId
+                    ?: roomManager.listDefinitions().firstOrNull { it.enabled }?.id
+                if (gameId == null) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("command.no_games")))
+                    return true
+                }
                 val room = roomManager.joinNewRoom(sender, gameId)
                 sender.sendMessage(Component.text(if (room == null) roomManager.createRoomFailureMessage(gameId) else languageManager.getMessage("room.quick_joined", room.id)))
+            }
+            "friend" -> {
+                if (!requireUser(sender)) return true
+                if (sender !is Player) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("command.only_player_friend")))
+                    return true
+                }
+                friendCommandService.execute(sender, label, args.drop(1))
+            }
+            "roommember" -> {
+                if (!requireUser(sender)) return true
+                if (sender !is Player) return true
+                val roomId = args.getOrNull(1) ?: return usage(sender, label)
+                val targetId = args.getOrNull(2)?.let { runCatching { UUID.fromString(it) }.getOrNull() } ?: return true
+                menuService.openMemberMenu(sender, roomId, targetId)
+            }
+            "teamjoin" -> {
+                if (!requireUser(sender)) return true
+                if (sender !is Player) return true
+                val roomId = args.getOrNull(1) ?: return usage(sender, label)
+                val teamId = args.getOrNull(2) ?: return usage(sender, label)
+                menuService.handleAction(sender, "kgc:join-team $roomId $teamId")
             }
             "leave" -> {
                 if (!requireUser(sender)) return true
@@ -175,6 +212,10 @@ class KaGameCenterCommand(
                 }
                 val left = roomManager.leaveCurrentRoom(sender)
                 sender.sendMessage(Component.text(if (left) languageManager.getMessage("room.left") else languageManager.getMessage("command.no_room")))
+            }
+            "reload" -> {
+                if (!requireAdmin(sender)) return true
+                handleReload(sender, label, args)
             }
             "admin" -> {
                 if (!requireAdmin(sender)) return true
@@ -194,7 +235,7 @@ class KaGameCenterCommand(
         if (args.size == 1) {
             val prefix = args[0].lowercase()
             return subCommands
-                .filter { it != "admin" || sender.hasPermission("kagamecenter.admin") }
+                .filter { it !in adminOnlySubCommands || sender.hasPermission("kagamecenter.admin") }
                 .filter { it.startsWith(prefix) }
         }
 
@@ -202,7 +243,7 @@ class KaGameCenterCommand(
             if (!sender.hasPermission("kagamecenter.admin")) return emptyList()
             return completeAdmin(sender, args)
         }
-        return completeUser(args)
+        return completeUser(sender, args)
     }
 
     private fun handleAdmin(sender: CommandSender, label: String, args: Array<out String>) {
@@ -260,6 +301,86 @@ class KaGameCenterCommand(
                 }
             }
         }
+    }
+
+    /** 分发核心资源与模块热重载，并输出每个模块的独立清理结果。 */
+    private fun handleReload(sender: CommandSender, label: String, args: Array<out String>) {
+        when (args.getOrNull(1)?.lowercase()) {
+            "config" -> {
+                val result = reloadService.reloadConfig()
+                sender.sendMessage(Component.text(if (result.success) {
+                    languageManager.getMessage("reload.config_success")
+                } else {
+                    languageManager.getMessage("reload.failed", "config", result.detail ?: "unknown")
+                }))
+            }
+            "lang", "language" -> {
+                val result = reloadService.reloadLanguage()
+                sender.sendMessage(Component.text(if (result.success) {
+                    languageManager.getMessage("reload.lang_success", result.value ?: "-")
+                } else {
+                    languageManager.getMessage("reload.failed", "lang", result.detail ?: "unknown")
+                }))
+            }
+            "map", "maps" -> {
+                val result = reloadService.reloadMaps()
+                sender.sendMessage(Component.text(if (result.success) {
+                    languageManager.getMessage("reload.map_success")
+                } else {
+                    languageManager.getMessage("reload.failed", "map", result.detail ?: "unknown")
+                }))
+            }
+            "model", "module", "modules" -> {
+                val moduleId = args.getOrNull(2)?.lowercase()
+                if (moduleId == null) {
+                    sender.sendMessage(Component.text(languageManager.getMessage("reload.usage", label)))
+                    return
+                }
+                if (moduleId == "all") {
+                    val results = reloadService.reloadAllModules()
+                    if (results.isEmpty()) {
+                        sender.sendMessage(Component.text(languageManager.getMessage("reload.no_modules")))
+                        return
+                    }
+                    results.forEach { sendModuleReloadResult(sender, it) }
+                    sender.sendMessage(Component.text(languageManager.getMessage(
+                        "reload.all_summary",
+                        results.count { it.success },
+                        results.count { !it.success }
+                    )))
+                } else {
+                    sendModuleReloadResult(sender, reloadService.reloadModule(moduleId))
+                }
+            }
+            else -> sender.sendMessage(Component.text(languageManager.getMessage("reload.usage", label)))
+        }
+    }
+
+    /** 以本地化格式反馈单个模块的版本、房间和编辑会话清理情况。 */
+    private fun sendModuleReloadResult(sender: CommandSender, result: ManagedModuleReloadResult) {
+        val message = when {
+            !result.success -> languageManager.getMessage(
+                "reload.module_failed",
+                result.moduleId.ifBlank { "-" },
+                result.closedRooms,
+                result.closedEditorSessions,
+                result.detail ?: "unknown"
+            )
+            result.active -> languageManager.getMessage(
+                "reload.module_success",
+                result.moduleId,
+                result.version ?: "unknown",
+                result.closedRooms,
+                result.closedEditorSessions
+            )
+            else -> languageManager.getMessage(
+                "reload.module_disabled",
+                result.moduleId,
+                result.closedRooms,
+                result.closedEditorSessions
+            )
+        }
+        sender.sendMessage(Component.text(message))
     }
 
     private fun handleIcon(sender: CommandSender, label: String, args: Array<out String>) {
@@ -517,7 +638,28 @@ class KaGameCenterCommand(
         }
     }
 
-    private fun completeUser(args: Array<out String>): List<String> {
+    private fun completeUser(sender: CommandSender, args: Array<out String>): List<String> {
+        if (args.firstOrNull()?.equals("friend", ignoreCase = true) == true) {
+            val player = sender as? Player ?: return emptyList()
+            return friendCommandService.tabComplete(player, args.drop(1))
+        }
+        if (args.firstOrNull()?.equals("reload", ignoreCase = true) == true) {
+            if (!sender.hasPermission("kagamecenter.admin")) return emptyList()
+            return when (args.size) {
+                2 -> reloadTargets.filter { it.startsWith(args[1], ignoreCase = true) }
+                3 -> if (args[1].equals("model", ignoreCase = true) ||
+                    args[1].equals("module", ignoreCase = true) ||
+                    args[1].equals("modules", ignoreCase = true)
+                ) {
+                    (listOf("all") + reloadService.reloadableModuleIds())
+                        .distinct()
+                        .filter { it.startsWith(args[2], ignoreCase = true) }
+                } else {
+                    emptyList()
+                }
+                else -> emptyList()
+            }
+        }
         return when (args.size) {
             2 -> {
                 val prefix = args[1].lowercase()

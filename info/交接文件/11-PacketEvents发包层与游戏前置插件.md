@@ -61,5 +61,5 @@
 
 - 当前每个活动伪装/私有拾取物可能拥有自己的跟随或拾取任务；大量并发视觉对象时应合并调度。
 - scoreboard entry 同时只能属于一个客户端队伍，玩家名牌、发光颜色和无碰撞 Teams 叠加时需要实服验证并考虑统一状态。
-- viewer 侧 `CollisionRule` 不能替代服务端完整碰撞规则；BedWars 同步使用 Bukkit `isCollidable` 与同队 `collidableExemptions`，并通过双层玩家快照恢复原值。
+- viewer 侧 `CollisionRule` 不能替代服务端完整碰撞规则；需要同队碰撞例外的模块应同步使用 Bukkit `isCollidable` 与 `collidableExemptions`，并通过玩家快照恢复原值。
 - `clearViewer` 会清理该 viewer 的所有临时视觉，模块调用时应确认不会误清同房间其他仍需保留的视觉。

@@ -1,6 +1,7 @@
 package org.katacr.kaGameCenter.module
 
 import org.bukkit.configuration.file.YamlConfiguration
+import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 import org.katacr.kaGameCenter.api.GameCenterApi
 import org.katacr.kaGameCenter.api.GameModuleContext
@@ -43,6 +44,13 @@ class ManagedGameModuleService(
 
     fun loadedModuleCount(): Int = loadedModules.size
 
+    /** 返回可由重载命令选择的已加载或已配置模块 ID。 */
+    fun reloadableModuleIds(): List<String> {
+        return (loadedModules.keys + discoverConfiguredModules())
+            .distinct()
+            .sortedBy { it.lowercase(Locale.ROOT) }
+    }
+
     fun load() {
         modulesFolder.mkdirs()
         releaseBundledModuleConfigs()
@@ -52,40 +60,146 @@ class ManagedGameModuleService(
             plugin.logger.info("No managed game modules found in ${modulesFolder.absolutePath}")
             return
         }
-        moduleIds.forEach(::loadManagedModule)
+        moduleIds.forEach { loadManagedModule(it) }
     }
 
     fun unload() {
         loadedModules.values.reversed().forEach { loaded ->
-            runCatching { loaded.provider.onUnload() }
-                .onFailure { plugin.logger.warning("Failed to unload game module ${loaded.id}: ${it.message}") }
-            runCatching { loaded.context.cleanup() }
-                .onFailure { plugin.logger.warning("Failed to clean game module ${loaded.id}: ${it.message}") }
-            runCatching { loaded.classLoader.close() }
-                .onFailure { plugin.logger.warning("Failed to close game module classloader ${loaded.id}: ${it.message}") }
+            unloadManagedModule(loaded)
         }
         loadedModules.clear()
     }
 
-    private fun loadManagedModule(moduleId: String) {
+    /** 关闭目标模块全部房间和编辑会话后，卸载并重新加载当前配置的模块 JAR。 */
+    fun reloadModule(moduleId: String): ManagedModuleReloadResult {
+        check(Bukkit.isPrimaryThread()) { "Managed game modules must be reloaded on the Bukkit main thread" }
+        releaseJarModuleResources()
+        return reloadModuleInternal(sanitizeModuleId(moduleId))
+    }
+
+    /** 依次安全重载全部已加载或已配置模块，并为每个模块保留独立结果。 */
+    fun reloadAllModules(): List<ManagedModuleReloadResult> {
+        check(Bukkit.isPrimaryThread()) { "Managed game modules must be reloaded on the Bukkit main thread" }
+        releaseJarModuleResources()
+        return reloadableModuleIds().map(::reloadModuleInternal)
+    }
+
+    private fun reloadModuleInternal(moduleId: String): ManagedModuleReloadResult {
+        if (moduleId.isBlank()) return ManagedModuleReloadResult.failure(moduleId, "invalid module id")
+        val configFile = File(modulesFolder, "$moduleId/config.yml")
+        val loaded = loadedModules[moduleId]
+        if (!configFile.isFile && loaded == null) {
+            return ManagedModuleReloadResult.failure(moduleId, "module config not found")
+        }
+
+        val roomIds = roomManager.listRooms()
+            .filter { it.module.id.equals(moduleId, ignoreCase = true) }
+            .map { it.id }
+        roomIds.forEach(roomManager::closeRoom)
+        val remainingRooms = roomManager.listRooms().filter { it.module.id.equals(moduleId, ignoreCase = true) }
+        if (remainingRooms.isNotEmpty()) {
+            return ManagedModuleReloadResult.failure(
+                moduleId,
+                "failed to close rooms: ${remainingRooms.joinToString { it.id }}",
+                closedRooms = roomIds.size - remainingRooms.size
+            )
+        }
+
+        val editorResult = mapEditorService.closeModuleSessions(moduleId, save = true)
+        if (!editorResult.success) {
+            return ManagedModuleReloadResult.failure(
+                moduleId,
+                "failed to save or close editor sessions: ${editorResult.failedSessionIds.joinToString()}",
+                closedRooms = roomIds.size,
+                closedEditorSessions = editorResult.attempted - editorResult.failedSessionIds.size
+            )
+        }
+
+        if (loaded != null) {
+            loadedModules.remove(moduleId)
+            val unloadErrors = unloadManagedModule(loaded)
+            if (unloadErrors.isNotEmpty()) {
+                managedGameCatalog.load()
+                return ManagedModuleReloadResult.failure(
+                    moduleId,
+                    unloadErrors.joinToString("; "),
+                    closedRooms = roomIds.size,
+                    closedEditorSessions = editorResult.attempted
+                )
+            }
+        }
+
+        val loadAttempt = loadManagedModule(moduleId)
+        managedGameCatalog.load()
+        return when {
+            loadAttempt.loaded -> ManagedModuleReloadResult(
+                success = true,
+                moduleId = moduleId,
+                active = true,
+                version = loadAttempt.version,
+                closedRooms = roomIds.size,
+                closedEditorSessions = editorResult.attempted
+            )
+            loadAttempt.disabled -> ManagedModuleReloadResult(
+                success = true,
+                moduleId = moduleId,
+                active = false,
+                version = loadAttempt.version,
+                closedRooms = roomIds.size,
+                closedEditorSessions = editorResult.attempted
+            )
+            else -> ManagedModuleReloadResult.failure(
+                moduleId,
+                loadAttempt.detail ?: "module load failed",
+                closedRooms = roomIds.size,
+                closedEditorSessions = editorResult.attempted
+            )
+        }
+    }
+
+    private fun unloadManagedModule(loaded: LoadedGameModule): List<String> {
+        val errors = mutableListOf<String>()
+        runCatching { loaded.provider.onUnload() }
+            .onFailure {
+                plugin.logger.warning("Failed to unload game module ${loaded.id}: ${it.message}")
+                errors += "provider unload failed: ${it.message}"
+            }
+        runCatching { loaded.context.cleanup() }
+            .onFailure {
+                plugin.logger.warning("Failed to clean game module ${loaded.id}: ${it.message}")
+                errors += "context cleanup failed: ${it.message}"
+            }
+        runCatching { loaded.classLoader.close() }
+            .onFailure {
+                plugin.logger.warning("Failed to close game module classloader ${loaded.id}: ${it.message}")
+                errors += "classloader close failed: ${it.message}"
+            }
+        return errors
+    }
+
+    private fun loadManagedModule(moduleId: String): ModuleLoadAttempt {
+        if (loadedModules.containsKey(moduleId)) {
+            return ModuleLoadAttempt(detail = "module is already loaded")
+        }
         val dataFolder = File(modulesFolder, moduleId)
         val configFile = File(dataFolder, "config.yml")
+        if (!configFile.isFile) return ModuleLoadAttempt(detail = "module config not found")
         val config = YamlConfiguration.loadConfiguration(configFile)
         if (!config.getBoolean("enabled", true)) {
             plugin.logger.info("Managed game module disabled: $moduleId")
-            return
+            return ModuleLoadAttempt(disabled = true, version = config.getString("version"))
         }
 
         if (!config.getString("main", "jar").equals("jar", ignoreCase = true)) {
             plugin.logger.warning("Managed game module type is not supported: $moduleId main=${config.getString("main")}")
-            return
+            return ModuleLoadAttempt(detail = "unsupported module type: ${config.getString("main")}")
         }
 
         val configuredJarPath = config.getString("jar", "../$moduleId.jar") ?: "../$moduleId.jar"
         val jarFile = resolveJarFile(dataFolder, moduleId, configuredJarPath)
         if (!jarFile.isFile) {
             plugin.logger.warning("Managed game module jar not found: ${jarFile.absolutePath}")
-            return
+            return ModuleLoadAttempt(detail = "module jar not found: ${jarFile.absolutePath}")
         }
         val moduleVersion = readJarModuleVersion(jarFile, config.getString("version"))
         syncResolvedModuleMetadata(configFile, config, dataFolder, configuredJarPath, jarFile, moduleVersion)
@@ -93,7 +207,7 @@ class ManagedGameModuleService(
         val entrypoint = config.getString("entrypoint")?.takeIf { it.isNotBlank() }
         if (entrypoint == null) {
             plugin.logger.warning("Managed game module entrypoint is empty: $moduleId")
-            return
+            return ModuleLoadAttempt(detail = "module entrypoint is empty")
         }
 
         val classLoader = URLClassLoader(arrayOf(jarFile.toURI().toURL()), plugin.javaClass.classLoader)
@@ -113,6 +227,8 @@ class ManagedGameModuleService(
                 plugin = plugin,
                 api = api,
                 roomManager = roomManager,
+                friendService = api.friendService,
+                playerStatusDisplayService = api.playerStatusDisplayService,
                 worldService = worldService,
                 languageManager = languageManager,
                 packetService = packetService,
@@ -127,6 +243,7 @@ class ManagedGameModuleService(
                 chestMenuService = api.chestMenuService,
                 roomTaskService = api.roomTaskService,
                 entityOwnershipService = api.entityOwnershipService,
+                roomPresentationService = api.roomPresentationService,
                 resultService = api.resultService,
                 playerRuntimeStateService = api.playerRuntimeStateService,
                 roomBroadcastService = api.roomBroadcastService,
@@ -134,6 +251,7 @@ class ManagedGameModuleService(
                 eliminationService = api.eliminationService,
                 spectatorService = api.spectatorService,
                 roomResourceScopeService = api.roomResourceScopeService,
+                reconnectStateService = api.reconnectStateService,
                 managedMapPointService = api.managedMapPointService,
                 spawnAssignmentService = api.spawnAssignmentService,
                 moduleAdminRegistry = moduleAdminCommands
@@ -143,6 +261,7 @@ class ManagedGameModuleService(
             loadedProvider.onLoad(moduleContext)
             loadedModules[moduleId] = LoadedGameModule(moduleId, moduleVersion, loadedProvider, moduleContext, classLoader)
             plugin.logger.info("Managed game module jar loaded: $moduleId v$moduleVersion (${jarFile.name})")
+            return ModuleLoadAttempt(loaded = true, version = moduleVersion)
         } catch (error: Throwable) {
             if (loadStarted) {
                 runCatching { provider?.onUnload() }
@@ -154,6 +273,7 @@ class ManagedGameModuleService(
                 .onFailure { plugin.logger.warning("Failed to close failed game module classloader $moduleId: ${it.message}") }
             plugin.logger.warning("Failed to load managed game module $moduleId: ${error.message}")
             error.printStackTrace()
+            return ModuleLoadAttempt(detail = error.message ?: error.javaClass.simpleName, version = moduleVersion)
         }
     }
 
@@ -353,9 +473,11 @@ class ManagedGameModuleService(
         }
         val configuredJar = resolveConfiguredJar(dataFolder, configuredJarPath)
         if (configuredJar != jarFile.canonicalFile) {
-            val relativeJar = dataFolder.toPath().relativize(jarFile.canonicalFile.toPath())
-                .joinToString("/")
-            config.set("jar", relativeJar)
+            val dataPath = dataFolder.canonicalFile.toPath()
+            val jarPath = jarFile.canonicalFile.toPath()
+            val persistedJarPath = runCatching { dataPath.relativize(jarPath).joinToString("/") }
+                .getOrElse { jarPath.toString().replace(File.separatorChar, '/') }
+            config.set("jar", persistedJarPath)
             changed = true
         }
         if (!changed) return
@@ -383,4 +505,42 @@ class ManagedGameModuleService(
         val context: GameModuleContext,
         val classLoader: URLClassLoader
     )
+
+    private data class ModuleLoadAttempt(
+        val loaded: Boolean = false,
+        val disabled: Boolean = false,
+        val version: String? = null,
+        val detail: String? = null
+    )
+}
+
+/** 描述一次托管小游戏模块重载的清理数量、激活状态和失败原因。 */
+data class ManagedModuleReloadResult(
+    val success: Boolean,
+    val moduleId: String,
+    val active: Boolean,
+    val version: String?,
+    val closedRooms: Int,
+    val closedEditorSessions: Int,
+    val detail: String? = null
+) {
+    companion object {
+        /** 创建不会继续加载新模块实例的失败结果。 */
+        fun failure(
+            moduleId: String,
+            detail: String,
+            closedRooms: Int = 0,
+            closedEditorSessions: Int = 0
+        ): ManagedModuleReloadResult {
+            return ManagedModuleReloadResult(
+                success = false,
+                moduleId = moduleId,
+                active = false,
+                version = null,
+                closedRooms = closedRooms,
+                closedEditorSessions = closedEditorSessions,
+                detail = detail
+            )
+        }
+    }
 }

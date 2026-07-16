@@ -1,6 +1,7 @@
 package org.katacr.kagamecenter.skywars
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
@@ -24,6 +25,9 @@ import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.katacr.kaGameCenter.broadcast.RoomBroadcastService
 import org.katacr.kaGameCenter.display.SidebarBoardRenderer
+import org.katacr.kaGameCenter.display.GameBossBarStatus
+import org.katacr.kaGameCenter.display.PlayerAvatarStatus
+import org.katacr.kaGameCenter.display.PlayerStatusSide
 import org.katacr.kaGameCenter.elimination.PlayerEliminationService
 import org.katacr.kaGameCenter.game.GameRoom
 import org.katacr.kaGameCenter.game.GameRoomManager
@@ -87,6 +91,26 @@ class SkyWarsGameSession(
     override fun usesCustomScoreboard(): Boolean = true
 
     override fun usesCustomActionBar(): Boolean = true
+
+    /** 为核心通用 BossBar 提供按队伍排序的玩家存活头像预览。 */
+    override fun bossBarStatus(): GameBossBarStatus? {
+        val statuses = states.entries
+            .filter { it.value.participant && it.key in room.players }
+            .sortedWith(compareBy({ it.value.teamId }, { playerName(it.key).lowercase() }))
+            .map { (playerId, state) ->
+                PlayerAvatarStatus(playerId, playerName(playerId), state.alive)
+            }
+        if (statuses.isEmpty()) return null
+        val split = ((statuses.size + 1) / 2).coerceAtMost(5)
+        val seconds = phaseTimer.secondsLeft.coerceAtLeast(0)
+        return GameBossBarStatus(
+            left = PlayerStatusSide(players = statuses.take(split)),
+            center = Component.text(formatBossBarTime(seconds), NamedTextColor.WHITE),
+            right = PlayerStatusSide(players = statuses.drop(split).take(5)),
+            progress = 1.0f,
+            color = BossBar.Color.YELLOW
+        )
+    }
 
     override fun onPrepare() {
         config = configService.reload()
@@ -741,6 +765,12 @@ class SkyWarsGameSession(
     private fun alivePlayerIds(): List<UUID> {
         return states.filterValues { it.alive && it.participant }.keys.filter(room.players::contains)
     }
+
+    private fun playerName(playerId: UUID): String {
+        return Bukkit.getPlayer(playerId)?.name ?: Bukkit.getOfflinePlayer(playerId).name ?: playerId.toString().take(8)
+    }
+
+    private fun formatBossBarTime(seconds: Int): String = "%02d:%02d".format(seconds / 60, seconds % 60)
 
     private fun isCombatPhase(): Boolean = phase == SkyWarsPhase.GRACE || phase == SkyWarsPhase.RUNNING
 

@@ -22,6 +22,7 @@ data class BedWarsConfig(
     val displayName: String,
     val minPlayers: Int,
     val maxPlayers: Int,
+    val autoStartMinPlayers: Int,
     val countdownSeconds: Int,
     val halfArenaCountdownSeconds: Int,
     val fullArenaCountdownSeconds: Int,
@@ -895,13 +896,6 @@ data class BedWarsSpecialMobHitState(
     val teamId: String,
     val specialId: String,
     val gameTick: Int
-)
-
-/** 暂存重连宽限期间的断线位置、商店货币和最近敌方攻击者。 */
-data class BedWarsDisconnectState(
-    val location: Location,
-    val resources: List<ItemStack>,
-    val attackerId: UUID?
 )
 
 /** 保存一个队伍在当前对局中的床存活状态。 */

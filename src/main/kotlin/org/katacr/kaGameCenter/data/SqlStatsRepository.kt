@@ -22,8 +22,12 @@ class SqlStatsRepository(
 
         dataSource = HikariDataSource(HikariConfig().apply {
             poolName = "KaGameCenter-${config.type.name.lowercase()}"
-            maximumPoolSize = config.poolMaximumSize
+            maximumPoolSize = if (config.type == DatabaseType.SQLITE) 1 else config.poolMaximumSize
+            minimumIdle = 1
             jdbcUrl = jdbcUrl()
+            if (config.type == DatabaseType.SQLITE) {
+                connectionInitSql = "PRAGMA busy_timeout=5000"
+            }
             if (config.type == DatabaseType.MYSQL) {
                 username = config.mysqlUsername
                 password = config.mysqlPassword
@@ -32,6 +36,9 @@ class SqlStatsRepository(
 
         dataSource.connection.use { connection ->
             connection.createStatement().use { statement ->
+                if (config.type == DatabaseType.SQLITE) {
+                    statement.execute("PRAGMA journal_mode=WAL")
+                }
                 statement.execute(createTableSql())
                 statement.execute(createMetricTableSql())
             }

@@ -34,9 +34,3 @@ permissions:
   kagamecenter.chat.spy:
     description: Allows receiving room/team chat spy messages when enabled in config
     default: op
-  kagamecenter.bedwars.shout:
-    description: Allows using BedWars shout chat during a running game
-    default: true
-  kagamecenter.bedwars.shout.bypass:
-    description: Bypasses the BedWars shout chat cooldown
-    default: op

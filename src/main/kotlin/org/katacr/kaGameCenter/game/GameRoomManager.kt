@@ -21,6 +21,7 @@ import org.katacr.kaGameCenter.event.GameRoomPreparedEvent
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.nametag.PlayerNametagService
 import org.katacr.kaGameCenter.resource.RoomResourceScopeService
+import org.katacr.kaGameCenter.reconnect.RoomReconnectStateService
 import org.katacr.kaGameCenter.spectator.SpectatorService
 import org.katacr.kaGameCenter.team.GameTeamService
 import org.katacr.kaGameCenter.velocity.VelocityBridgeService
@@ -45,7 +46,8 @@ class GameRoomManager(
     private val velocityBridgeService: VelocityBridgeService,
     private val nametagService: PlayerNametagService,
     private val eliminationService: PlayerEliminationService,
-    private val roomResourceScopeService: RoomResourceScopeService
+    private val roomResourceScopeService: RoomResourceScopeService,
+    private val reconnectStateService: RoomReconnectStateService
 ) {
     private val rooms = linkedMapOf<String, GameRoom>()
     private val playerSessions = linkedMapOf<UUID, PlayerSession>()
@@ -85,6 +87,7 @@ class GameRoomManager(
         reconnectExpiryTasks.values.forEach(BukkitTask::cancel)
         reconnectExpiryTasks.clear()
         rooms.keys.toList().forEach { closeRoom(it) }
+        reconnectStateService.clearAll()
     }
 
     fun createRoom(gameId: String, owner: UUID? = null, mapTemplate: String? = null, name: String? = null): GameRoom? {
@@ -432,7 +435,13 @@ class GameRoomManager(
         if (graceTicks <= 0L) return false
 
         reconnectExpiryTasks.remove(player.uniqueId)?.cancel()
+        val lastDamagerId = runCatching { room.session.resolveKiller(player)?.uniqueId }
+            .onFailure {
+                plugin.logger.warning("Failed to resolve disconnect attacker for ${player.uniqueId} in room ${room.id}: ${it.message}")
+            }
+            .getOrNull()
         val disconnectFailure = runCatching {
+            reconnectStateService.capture(room.id, player, lastDamagerId)
             displayService.detach(player, room)
             nametagService.clearTarget(player.uniqueId)
             nametagService.clearViewer(player)
@@ -444,6 +453,7 @@ class GameRoomManager(
         if (disconnectFailure != null) {
             plugin.logger.warning("Failed to preserve reconnect seat for ${player.uniqueId} in room ${room.id}: ${disconnectFailure.message}")
             reconnectExpiryTasks.remove(player.uniqueId)?.cancel()
+            reconnectStateService.remove(player.uniqueId)
             return false
         }
         runRoomCleanup(room, "publish disconnected player ${player.uniqueId}") { publishRoom(room) }
@@ -489,6 +499,7 @@ class GameRoomManager(
         }.exceptionOrNull()
         reconnectExpiryTasks.remove(player.uniqueId)
         task.cancel()
+        reconnectStateService.remove(player.uniqueId)
         if (reconnectFailure != null) {
             plugin.logger.warning("Failed to reconnect player ${player.uniqueId} to room ${room.id}: ${reconnectFailure.message}")
             publishAdmissionDenied(room, player, GameRoomAdmissionType.RECONNECT, GameRoomAdmissionDeniedReason.CALLBACK_FAILED)
@@ -601,6 +612,7 @@ class GameRoomManager(
         runRoomCleanup(room, "mark room closed") { displayService.markClosed(room) }
         runRoomCleanup(room, "close game session") { room.session.onClose() }
         runRoomCleanup(room, "close resource scope") { roomResourceScopeService.closeRoom(room.id) }
+        runRoomCleanup(room, "clear reconnect snapshots") { reconnectStateService.clearRoom(room.id) }
         runRoomCleanup(room, "clear eliminations") { eliminationService.clearRoom(room.id) }
         runRoomCleanup(room, "clear spectators") { spectatorService.clearRoom(room.id) }
         runRoomCleanup(room, "clear teams") { teamService.clearRoom(room.id) }
@@ -632,30 +644,37 @@ class GameRoomManager(
 
     private fun expireReconnect(playerId: UUID, roomId: String) {
         reconnectExpiryTasks.remove(playerId)
-        if (Bukkit.getPlayer(playerId)?.isOnline == true) return
-        val playerSession = playerSessions[playerId] ?: return
-        if (playerSession.roomId != roomId || playerSession.spectator) return
-        val room = rooms[roomId] ?: return
+        var expiredRoom: GameRoom? = null
+        try {
+            if (Bukkit.getPlayer(playerId)?.isOnline == true) return
+            val playerSession = playerSessions[playerId] ?: return
+            if (playerSession.roomId != roomId || playerSession.spectator) return
+            val room = rooms[roomId] ?: return
+            expiredRoom = room
 
-        runRoomCleanup(room, "notify reconnect expiry for $playerId") {
-            room.session.onPlayerReconnectExpired(playerId)
+            runRoomCleanup(room, "notify reconnect expiry for $playerId") {
+                room.session.onPlayerReconnectExpired(playerId)
+            }
+            if (rooms[room.id] !== room) return
+            runRoomCleanup(room, "stop following expired player $playerId") {
+                spectatorService.stopFollowingTarget(playerId)
+            }
+            runRoomCleanup(room, "clear expired player elimination $playerId") {
+                eliminationService.clear(room.id, playerId)
+            }
+            room.players.remove(playerId)
+            runRoomCleanup(room, "leave team for expired player $playerId") {
+                teamService.leave(room.id, playerId)
+            }
+            playerSessions.remove(playerId)
+            pendingSnapshotRestores.add(playerId)
+            runRoomCleanup(room, "publish reconnect expiry for $playerId") {
+                publishPlayerLeave(room, playerId, null, spectator = false, GameRoomLeaveReason.RECONNECT_EXPIRED)
+            }
+        } finally {
+            reconnectStateService.remove(roomId, playerId)
         }
-        if (rooms[room.id] !== room) return
-        runRoomCleanup(room, "stop following expired player $playerId") {
-            spectatorService.stopFollowingTarget(playerId)
-        }
-        runRoomCleanup(room, "clear expired player elimination $playerId") {
-            eliminationService.clear(room.id, playerId)
-        }
-        room.players.remove(playerId)
-        runRoomCleanup(room, "leave team for expired player $playerId") {
-            teamService.leave(room.id, playerId)
-        }
-        playerSessions.remove(playerId)
-        pendingSnapshotRestores.add(playerId)
-        runRoomCleanup(room, "publish reconnect expiry for $playerId") {
-            publishPlayerLeave(room, playerId, null, spectator = false, GameRoomLeaveReason.RECONNECT_EXPIRED)
-        }
+        val room = expiredRoom
         if (rooms[room.id] !== room) return
         if (room.owner == playerId) room.owner = room.players.firstOrNull()
         if (room.players.isEmpty() && room.spectators.isEmpty()) {
@@ -847,6 +866,7 @@ class GameRoomManager(
         reconnectExpiryTasks.remove(player.uniqueId)?.let { task ->
             runRoomCleanup(room, "cancel reconnect task for ${player.uniqueId}") { task.cancel() }
         }
+        reconnectStateService.remove(player.uniqueId)
         if (playerSessions[player.uniqueId]?.roomId == room.id) playerSessions.remove(player.uniqueId)
         room.players.remove(player.uniqueId)
         room.spectators.remove(player.uniqueId)

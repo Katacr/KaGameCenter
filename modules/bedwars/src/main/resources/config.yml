@@ -1,7 +1,7 @@
 id: bedwars
 name: "起床战争"
 version: "${version}"
-enabled: true
+enabled: false
 main: jar
 jar: "../bedwars-${version}.jar"
 entrypoint: "org.katacr.kagamecenter.bedwars.BedWarsModuleProvider"
@@ -11,6 +11,8 @@ game:
   display-name: "起床战争"
   min-players: 2
   max-players: 16
+  # 达到此在线人数时只进入开局倒计时；倒计时结束后才正式开始游戏。
+  auto-start-min-players: 2
   sounds:
     join-allowed: { sound: ENTITY_SLIME_JUMP, volume: 1.0, pitch: 1.0 }
     join-denied: { sound: ENTITY_VILLAGER_NO, volume: 1.0, pitch: 1.0 }

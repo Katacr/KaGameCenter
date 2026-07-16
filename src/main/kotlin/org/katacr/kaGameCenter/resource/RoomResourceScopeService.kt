@@ -28,6 +28,18 @@ class RoomResourceScopeService(
         }
     }
 
+    /** 从已存在的房间作用域释放实体，不会为已关闭房间重新创建空作用域。 */
+    @Synchronized
+    fun releaseEntity(roomId: String, entityId: UUID) {
+        scopes[roomId]?.releaseEntity(entityId)
+    }
+
+    /** 判断实体是否登记在指定房间的现有资源作用域中。 */
+    @Synchronized
+    fun isEntityTracked(roomId: String, entityId: UUID): Boolean {
+        return scopes[roomId]?.isEntityTracked(entityId) == true
+    }
+
     /** 关闭并移除指定房间的资源作用域。 */
     @Synchronized
     fun closeRoom(roomId: String) {
@@ -70,6 +82,9 @@ class RoomResourceScope internal constructor(
         entities.remove(entityId)
         entityOwnershipService.remove(entityId)
     }
+
+    /** 判断实体是否仍由当前房间资源作用域托管。 */
+    fun isEntityTracked(entityId: UUID): Boolean = entityId in entities
 
     /** 首次修改方块前保存其原始 BlockData，关闭房间时自动恢复。 */
     fun captureBlock(block: Block) {

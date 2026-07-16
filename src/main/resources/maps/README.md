@@ -8,4 +8,4 @@ Expected runtime location:
 
 Game-specific templates should be placed under subfolders such as:
 
-- `plugins/KaGameCenter/maps/parkour/default/`
+- `plugins/KaGameCenter/maps/example/default/`

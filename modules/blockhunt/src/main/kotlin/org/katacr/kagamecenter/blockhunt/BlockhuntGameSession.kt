@@ -1,6 +1,7 @@
 package org.katacr.kagamecenter.blockhunt
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
@@ -16,6 +17,9 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import org.katacr.kaGameCenter.display.SidebarBoardRenderer
+import org.katacr.kaGameCenter.display.GameBossBarStatus
+import org.katacr.kaGameCenter.display.PlayerAvatarStatus
+import org.katacr.kaGameCenter.display.PlayerStatusSide
 import org.katacr.kaGameCenter.game.GameRoom
 import org.katacr.kaGameCenter.game.GameRoomManager
 import org.katacr.kaGameCenter.game.GameSession
@@ -48,6 +52,35 @@ class BlockhuntGameSession(
 ) : GameSession {
     override fun usesCustomScoreboard(): Boolean = true
     override fun usesCustomActionBar(): Boolean = true
+
+    /** 为核心通用 BossBar 提供猎人与躲藏者头像及当前阶段倒计时。 */
+    override fun bossBarStatus(): GameBossBarStatus? {
+        if (states.isEmpty()) return null
+        val hunters = states.filterValues { it.role == BlockhuntRole.HUNTER }.map { (playerId, state) ->
+            PlayerAvatarStatus(playerId, playerName(playerId), state.alive)
+        }
+        val hiders = states.filterValues { it.role == BlockhuntRole.HIDER }.map { (playerId, state) ->
+            PlayerAvatarStatus(playerId, playerName(playerId), state.alive)
+        }
+        val seconds = when (phase) {
+            BlockhuntPhase.COUNTDOWN -> countdownTicks / 20
+            BlockhuntPhase.HIDING -> hidingTicks / 20
+            BlockhuntPhase.RUNNING -> runningTicks / 20
+            BlockhuntPhase.RESULT -> resultTicks / 20
+            BlockhuntPhase.CLOSING -> closeTicks / 20
+            BlockhuntPhase.WAITING -> 0
+        }.coerceAtLeast(0)
+        return GameBossBarStatus(
+            left = PlayerStatusSide(Component.text(roleName(BlockhuntRole.HUNTER), NamedTextColor.RED), hunters),
+            center = Component.text(formatBossBarTime(seconds), NamedTextColor.WHITE),
+            right = PlayerStatusSide(Component.text(roleName(BlockhuntRole.HIDER), NamedTextColor.GREEN), hiders),
+            progress = when (phase) {
+                BlockhuntPhase.RUNNING -> seconds.toFloat() / config.durationSeconds.coerceAtLeast(1)
+                else -> 1.0f
+            },
+            color = BossBar.Color.GREEN
+        )
+    }
 
     private val states = linkedMapOf<UUID, BlockhuntPlayerState>()
     private val activePickups = linkedMapOf<String, ActivePickup>()
@@ -888,6 +921,12 @@ class BlockhuntGameSession(
             null -> language.getMessage("blockhunt.role_spectator")
         }
     }
+
+    private fun playerName(playerId: UUID): String {
+        return Bukkit.getPlayer(playerId)?.name ?: Bukkit.getOfflinePlayer(playerId).name ?: playerId.toString().take(8)
+    }
+
+    private fun formatBossBarTime(seconds: Int): String = "%02d:%02d".format(seconds / 60, seconds % 60)
 
     private fun BlockhuntRole.teamId(): String {
         return when (this) {

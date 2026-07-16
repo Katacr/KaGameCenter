@@ -1,6 +1,6 @@
 # KaGameCenter 小游戏开发 Wiki
 
-更新时间：2026-07-13
+更新时间：2026-07-16
 
 本 wiki 面向外置小游戏模块开发者。KaGameCenter 模块不是 Bukkit 插件，不写 `plugin.yml`，而是由主插件从 `plugins/KaGameCenter/modules/` 托管加载。
 
@@ -33,13 +33,9 @@
 | 防止多个房间串数据 | [并发隔离与资源清理](09-并发隔离与资源清理.md) |
 | 部署到 Paper 26.2 | [构建部署与验收](10-构建部署与验收.md) |
 
-## 当前参考模块
+## 模块文档
 
-- `modules/parkour`：区域触发和顺序进度。
-- `modules/blockhunt`：角色状态、伪装和阵营道具。
-- `modules/tntwars`：队伍对抗、实体归属和随机事件。
-- `modules/hunger`：个人淘汰、战利品和阶段推进。
-- `modules/skywars`：动态队伍、岛屿出生、分级物资箱和虚空淘汰。
+具体玩法的蓝图、配置、实现状态和测试记录位于 `modules/<module>/`。本 wiki 只描述 KaGameCenter 主插件契约。
 
 ## 核心规则
 

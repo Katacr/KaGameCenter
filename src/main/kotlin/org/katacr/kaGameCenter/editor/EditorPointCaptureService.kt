@@ -17,12 +17,14 @@ import org.bukkit.persistence.PersistentDataType
 import org.bukkit.plugin.java.JavaPlugin
 import org.katacr.kaGameCenter.event.GameMapEditSessionClosedEvent
 import org.katacr.kaGameCenter.i18n.LanguageManager
+import java.util.Locale
 import java.util.UUID
 
-/** 表示骨头编辑工具当前连续采集的是方块还是玩家所在位置。 */
+/** 表示骨头编辑工具当前连续采集的是方块、整数位置还是精确位置。 */
 enum class EditorPointCaptureMode {
     BLOCK,
-    POSITION
+    POSITION,
+    EXACT_POSITION
 }
 
 /**
@@ -51,6 +53,11 @@ class EditorPointCaptureService(
     /** 开始连续采集玩家脚下整数位置；处理器返回 false 时结束当前模式。 */
     fun beginPositionCapture(player: Player, ownerId: String, handler: (Player, Location) -> Boolean) {
         begin(player, ownerId, EditorPointCaptureMode.POSITION, handler)
+    }
+
+    /** 开始连续采集玩家脚下精确浮点位置；处理器返回 false 时结束当前模式。 */
+    fun beginExactPositionCapture(player: Player, ownerId: String, handler: (Player, Location) -> Boolean) {
+        begin(player, ownerId, EditorPointCaptureMode.EXACT_POSITION, handler)
     }
 
     /** 结束指定玩家的采集模式并移除服务发放的骨头工具。 */
@@ -98,6 +105,13 @@ class EditorPointCaptureService(
                 }
                 integerLocation(player.location)
             }
+            EditorPointCaptureMode.EXACT_POSITION -> {
+                if (event.action != Action.RIGHT_CLICK_AIR && event.action != Action.RIGHT_CLICK_BLOCK) {
+                    player.sendMessage(Component.text(languageManager.getMessage("editor_capture.position_required")))
+                    return
+                }
+                player.location.clone()
+            }
         }
 
         val keepCapturing = runCatching { state.handler(player, location) }
@@ -114,9 +128,9 @@ class EditorPointCaptureService(
             "editor_capture.captured",
             state.captureCount,
             location.world?.name ?: "-",
-            location.blockX,
-            location.blockY,
-            location.blockZ
+            displayCoordinate(location.x, state.mode),
+            displayCoordinate(location.y, state.mode),
+            displayCoordinate(location.z, state.mode)
         )))
     }
 
@@ -145,7 +159,11 @@ class EditorPointCaptureService(
         player.closeDialog()
         player.closeInventory()
         ensureTool(player)
-        val key = if (mode == EditorPointCaptureMode.BLOCK) "editor_capture.block_started" else "editor_capture.position_started"
+        val key = when (mode) {
+            EditorPointCaptureMode.BLOCK -> "editor_capture.block_started"
+            EditorPointCaptureMode.POSITION -> "editor_capture.position_started"
+            EditorPointCaptureMode.EXACT_POSITION -> "editor_capture.exact_position_started"
+        }
         player.sendMessage(Component.text(languageManager.getMessage(key)))
     }
 
@@ -198,5 +216,14 @@ class EditorPointCaptureService(
             location.yaw,
             location.pitch
         )
+    }
+
+    /** 按采集模式显示整数坐标或最多三位小数的精确坐标。 */
+    private fun displayCoordinate(value: Double, mode: EditorPointCaptureMode): Any {
+        return if (mode == EditorPointCaptureMode.EXACT_POSITION) {
+            String.format(Locale.ROOT, "%.3f", value).trimEnd('0').trimEnd('.')
+        } else {
+            value.toInt()
+        }
     }
 }

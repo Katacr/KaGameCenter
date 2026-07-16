@@ -3,6 +3,7 @@ package org.katacr.kaGameCenter.game
 import org.bukkit.entity.Player
 import org.katacr.kaGameCenter.chat.GameChatChannel
 import org.katacr.kaGameCenter.chat.GameChatRoute
+import org.katacr.kaGameCenter.display.GameBossBarStatus
 import java.util.UUID
 
 interface GameSession {
@@ -37,6 +38,8 @@ interface GameSession {
     }
     fun usesCustomScoreboard(): Boolean = false
     fun usesCustomActionBar(): Boolean = false
+    /** 返回通用头像 BossBar 快照；null 表示使用核心默认房间状态条。 */
+    fun bossBarStatus(): GameBossBarStatus? = null
     /** 声明玩法只接管 Tab 头尾；主插件仍负责玩家名称与排序。 */
     fun usesCustomTabHeaderFooter(): Boolean = false
     /** 声明玩法只接管 Tab 玩家名称；主插件仍负责稳定排序。 */

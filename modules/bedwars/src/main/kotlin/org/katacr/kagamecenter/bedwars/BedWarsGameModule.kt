@@ -19,6 +19,8 @@ import org.katacr.kaGameCenter.world.TemporaryWorldService
 import org.bukkit.plugin.java.JavaPlugin
 import org.katacr.kaGameCenter.elimination.PlayerEliminationService
 import org.katacr.kaGameCenter.resource.RoomResourceScopeService
+import org.katacr.kaGameCenter.entity.RoomPresentationService
+import org.katacr.kaGameCenter.reconnect.RoomReconnectStateService
 import org.katacr.kaGameCenter.velocity.VelocityBridgeService
 import org.bukkit.entity.Player
 
@@ -41,6 +43,8 @@ class BedWarsGameModule(
     private val eliminationService: PlayerEliminationService,
     private val spectatorService: SpectatorService,
     private val roomResourceScopeService: RoomResourceScopeService,
+    private val roomPresentationService: RoomPresentationService,
+    private val reconnectStateService: RoomReconnectStateService,
     private val velocityBridgeService: VelocityBridgeService
 ) : GameModule {
     override val id: String = "bedwars"
@@ -90,6 +94,8 @@ class BedWarsGameModule(
         eliminationService,
         spectatorService,
         roomResourceScopeService,
+        roomPresentationService,
+        reconnectStateService,
         velocityBridgeService
     )
 }

@@ -5,12 +5,15 @@ import org.katacr.kaGameCenter.broadcast.RoomBroadcastService
 import org.katacr.kaGameCenter.chat.GameChatService
 import org.katacr.kaGameCenter.editor.MapEditorService
 import org.katacr.kaGameCenter.editor.EditorPointCaptureService
+import org.katacr.kaGameCenter.display.PlayerStatusDisplayService
 import org.katacr.kaGameCenter.elimination.PlayerEliminationService
 import org.katacr.kaGameCenter.entity.RoomEntityOwnershipService
+import org.katacr.kaGameCenter.entity.RoomPresentationService
 import org.katacr.kaGameCenter.game.GameModule
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.GameRegistry
 import org.katacr.kaGameCenter.game.GameRoomManager
+import org.katacr.kaGameCenter.friend.FriendService
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.menu.chest.ChestMenuService
 import org.katacr.kaGameCenter.map.ManagedMapPointService
@@ -19,6 +22,7 @@ import org.katacr.kaGameCenter.packet.PacketDispatchService
 import org.katacr.kaGameCenter.result.GameResultService
 import org.katacr.kaGameCenter.runtime.PlayerRuntimeStateService
 import org.katacr.kaGameCenter.resource.RoomResourceScopeService
+import org.katacr.kaGameCenter.reconnect.RoomReconnectStateService
 import org.katacr.kaGameCenter.selection.SelectionService
 import org.katacr.kaGameCenter.team.GameTeamService
 import org.katacr.kaGameCenter.team.TeamAssignmentService
@@ -31,6 +35,8 @@ import org.katacr.kaGameCenter.velocity.VelocityBridgeService
 class GameCenterApi(
     private val registry: GameRegistry,
     val roomManager: GameRoomManager,
+    val friendService: FriendService,
+    val playerStatusDisplayService: PlayerStatusDisplayService,
     val worldService: TemporaryWorldService,
     val languageManager: LanguageManager,
     val packetService: PacketDispatchService,
@@ -45,6 +51,7 @@ class GameCenterApi(
     val chestMenuService: ChestMenuService,
     val roomTaskService: RoomTaskService,
     val entityOwnershipService: RoomEntityOwnershipService,
+    val roomPresentationService: RoomPresentationService,
     val resultService: GameResultService,
     val playerRuntimeStateService: PlayerRuntimeStateService,
     val roomBroadcastService: RoomBroadcastService,
@@ -52,6 +59,7 @@ class GameCenterApi(
     val eliminationService: PlayerEliminationService,
     val spectatorService: SpectatorService,
     val roomResourceScopeService: RoomResourceScopeService,
+    val reconnectStateService: RoomReconnectStateService,
     val managedMapPointService: ManagedMapPointService,
     val spawnAssignmentService: SpawnAssignmentService,
     val velocityBridgeService: VelocityBridgeService

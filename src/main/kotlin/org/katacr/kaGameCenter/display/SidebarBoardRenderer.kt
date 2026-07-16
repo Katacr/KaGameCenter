@@ -40,15 +40,44 @@ object SidebarBoardRenderer {
         )
         objective.displaySlot = DisplaySlot.SIDEBAR
         val visibleLines = renderEvent.lines.take(15)
-        visibleLines.forEachIndexed { index, line ->
-            val entry = "${line.take(renderEvent.maxLineLength.coerceIn(1, 128))}${uniqueSuffix(index)}"
-            objective.getScore(entry).score = visibleLines.size - index
-        }
+        renderLines(
+            scoreboard,
+            objective,
+            visibleLines.map { IconTextParser.parse(it.take(renderEvent.maxLineLength.coerceIn(1, 128))) }
+        )
         if (renderEvent.showHealthBelowName) {
             registerHealthObjective(scoreboard, objectiveId, "_health", DisplaySlot.BELOW_NAME, renderEvent.healthLabel)
         }
         if (renderEvent.showHealthInPlayerList) {
             registerHealthObjective(scoreboard, objectiveId, "_health_tab", DisplaySlot.PLAYER_LIST, renderEvent.healthLabel)
+        }
+        player.scoreboard = scoreboard
+    }
+
+    /** 使用 Adventure Component 渲染支持头像和物品图标的计分板行。 */
+    @JvmOverloads
+    fun showComponents(
+        player: Player,
+        objectiveId: String,
+        title: Component,
+        lines: List<Component>,
+        showHealthBelowName: Boolean = false,
+        showHealthInPlayerList: Boolean = false,
+        healthLabel: Component = Component.text("❤")
+    ) {
+        val scoreboard = Bukkit.getScoreboardManager().newScoreboard
+        val objective = scoreboard.registerNewObjective(
+            objectiveId.sanitizeObjectiveId(),
+            Criteria.DUMMY,
+            title
+        )
+        objective.displaySlot = DisplaySlot.SIDEBAR
+        renderLines(scoreboard, objective, lines.take(15))
+        if (showHealthBelowName) {
+            registerHealthObjective(scoreboard, objectiveId, "_health", DisplaySlot.BELOW_NAME, healthLabel)
+        }
+        if (showHealthInPlayerList) {
+            registerHealthObjective(scoreboard, objectiveId, "_health_tab", DisplaySlot.PLAYER_LIST, healthLabel)
         }
         player.scoreboard = scoreboard
     }
@@ -84,6 +113,17 @@ object SidebarBoardRenderer {
             label,
             RenderType.HEARTS
         ).displaySlot = displaySlot
+    }
+
+    /** 使用不可见唯一 entry 和 Team 前缀承载完整 Component 行。 */
+    private fun renderLines(scoreboard: Scoreboard, objective: org.bukkit.scoreboard.Objective, lines: List<Component>) {
+        lines.forEachIndexed { index, line ->
+            val entry = uniqueSuffix(index)
+            val team = scoreboard.registerNewTeam("kgc_line_$index")
+            team.prefix(line)
+            team.addEntry(entry)
+            objective.getScore(entry).score = lines.size - index
+        }
     }
 
     private fun String.sanitizeObjectiveId(suffix: String = ""): String {

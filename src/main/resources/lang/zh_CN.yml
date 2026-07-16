@@ -27,6 +27,7 @@ command:
   only_player_enter: "只有玩家可以进入测试世界。"
   only_player_packet: "只有玩家可以执行发包测试。"
   only_player_icon: "只有玩家可以执行图标文本测试。"
+  only_player_friend: "只有玩家可以使用好友功能。"
   usage: "用法: /{0} help；管理员用法: /{0} admin help"
   help: |-
     §6KaGameCenter 指令
@@ -40,7 +41,9 @@ command:
     §e/{0} create <gameId> [mapPath] [roomName] §7创建房间
     §e/{0} join <roomId> §7加入指定房间
     §e/{0} quickjoin [gameId] §7快速加入或创建房间
+    §e/{0} friend [list|add|accept|deny|remove|join|spectate|msg] §7管理好友
     §e/{0} leave §7离开当前房间
+    §c/{0} reload <config|lang|map|model> ... §7重载主插件资源或托管模块
     §c/{0} admin help §7查看管理员命令
   admin_help: |-
     §6KaGameCenter 管理指令
@@ -68,6 +71,18 @@ command:
   no_games: "当前没有注册任何游戏。"
   no_stats: "当前没有记录任何统计。"
   no_permission: "你没有权限执行该操作。"
+
+reload:
+  usage: "用法: /{0} reload <config|lang|map|model>；模块重载: /{0} reload model <moduleId|all>"
+  config_success: "主插件配置已重载；数据库、Velocity 等启动期服务不会重建。"
+  lang_success: "主插件语言已重载，当前语言: {0}。"
+  map_success: "主插件公共地图模板目录已刷新；模块私有游戏配置、私有地图快照和运行房间未改动。"
+  failed: "重载 {0} 失败: {1}"
+  no_modules: "没有可重载的托管小游戏模块。"
+  module_success: "模块 {0} v{1} 已重载；已关闭 {2} 个房间、{3} 个编辑会话。"
+  module_disabled: "模块 {0} 已卸载且当前配置为禁用；已关闭 {1} 个房间、{2} 个编辑会话。"
+  module_failed: "模块 {0} 重载失败；已关闭 {1} 个房间、{2} 个编辑会话。原因: {3}"
+  all_summary: "模块重载完成：成功 {0}，失败 {1}。"
 
 packet:
   unavailable: "PacketEvents 不可用，无法执行发包测试。"
@@ -107,6 +122,58 @@ chat:
   team_format: "§8[§b队伍 {2}§8] §f{3}: §r{4}"
   spy_format: "§8[§7旁听 {0}§8] §7{1}"
 
+friend:
+  usage: "用法: /{0} friend <list|add|accept|deny|remove|join|spectate|msg> [玩家名或UUID]"
+  message_usage: "用法: /{0} friend msg <玩家名或UUID> <消息>"
+  target_required: "§c请输入玩家名称或 UUID。"
+  player_not_found: "§c找不到曾登录过的玩家: {0}"
+  not_friends: "§c你和 {0} 不是好友。"
+  friend_offline: "§e好友 {0} 当前不在线。"
+  friend_not_in_room: "§e好友 {0} 当前不在游戏房间中。"
+  joined_room: "§a已加入好友 {0} 的房间 {1}。"
+  spectating_room: "§b正在观战好友 {0} 的房间 {1}。"
+  request_received: "§e{0} 向你发送了好友申请。输入 /{1} friend accept {2} 接受。"
+  request_accepted_target: "§a{0} 已接受你的好友申请。"
+  result_sent: "§a已向 {0} 发送好友申请。"
+  result_accepted: "§a你和 {0} 已成为好友。"
+  result_denied: "§7已拒绝 {0} 的好友申请。"
+  result_removed: "§e已删除好友 {0}。"
+  result_self: "§c不能对自己执行好友操作。"
+  result_already_friends: "§e你和 {0} 已经是好友。"
+  result_request_already_sent: "§e已向 {0} 发送过好友申请。"
+  result_incoming_request_exists: "§e{0} 已向你发送申请，请先接受或拒绝。"
+  result_request_not_found: "§c没有找到来自 {0} 的好友申请。"
+  result_not_friends: "§c你和 {0} 不是好友。"
+  list_title: "好友列表"
+  list_empty: "暂无好友。"
+  list_hover: "点击填写私聊命令"
+  requests_title: "待处理申请"
+  request_hover: "点击接受好友申请"
+  status_online: "在线"
+  status_offline: "离线"
+  message_sent: "§d[私聊 -> {0}] §f{1}"
+  message_received: "§d[私聊] §f{0}: §r{1}"
+  message_empty: "§c私聊内容不能为空。"
+  menu_title: "&6好友"
+  menu_summary: "&7好友: &f{0} &8| &7待处理申请: &f{1}"
+  detail_title: "&6好友 {0}"
+  detail_status: "&7玩家: &f{0} &8| &7状态: &f{1}"
+  message_title: "&6私聊 {0}"
+  input_player: "&a玩家名称或 UUID"
+  input_message: "&d私聊内容"
+  button_add: "&a[ 添加好友 ]"
+  button_accept: "&a[ 接受申请 ]"
+  button_deny: "&c[ 拒绝申请 ]"
+  button_pending: "&e[ 申请待处理 ]"
+  button_message: "&d[ 私聊 ]"
+  button_join: "&a[ 加入房间 ]"
+  button_spectate: "&b[ 观战好友 ]"
+  button_remove: "&c[ 删除好友 ]"
+  button_send: "&a[ 发送 ]"
+  request_button: "&e[ 申请 ] &f{0}"
+  request_menu_tooltip: "&7点击接受；可使用命令拒绝。"
+  friend_button: "&f[ {0} ]"
+
 selection:
   point_set: "§a已设置 {0}: §f{1} {2} {3} {4}"
   ready: "§a选区已就绪: §f{0} ({1},{2},{3}) -> ({4},{5},{6})"
@@ -115,9 +182,10 @@ selection:
 editor_capture:
   tool_name: "地图配置采点工具"
   tool_left: "左键方块：采集方块或容器"
-  tool_right: "右键：采集玩家脚下整数坐标"
+  tool_right: "右键：采集玩家位置（整数/精确以当前提示为准）"
   block_started: "§a已进入连续方块采集模式。手持骨头左键目标方块；重新打开编辑菜单可切换操作。"
   position_started: "§a已进入连续位置采集模式。手持骨头右键即可记录当前脚下整数坐标；重新打开编辑菜单可切换操作。"
+  exact_position_started: "§a已进入连续精确位置采集模式。站在目标位置手持骨头右键即可保留小数坐标；重新打开编辑菜单可结束或切换操作。"
   block_required: "§c当前操作需要手持骨头左键一个目标方块或容器。"
   position_required: "§c当前操作需要手持骨头右键，以记录玩家当前脚下坐标。"
   captured: "§a本次已采集 {0} 个点：§f{1} {2} {3} {4}"
@@ -169,9 +237,6 @@ stats:
   losses: "&c失败：&f{0}"
   kills: "&e总击杀：&f{0}"
   deaths: "&7总死亡：&f{0}"
-  final_kills: "&c最终击杀：&f{0}"
-  final_deaths: "&8最终死亡：&f{0}"
-  beds_destroyed: "&d破床：&f{0}"
   points: "&b点数：&f{0}"
   metric_generic: "&7{0}：&f{1}"
   button_overview: "&b[ 全部玩法 ]"
@@ -297,10 +362,9 @@ menu:
   button_rooms: "&b[ 房间列表 ]"
   button_create_room: "&a[ 创建房间 ]"
   button_stats: "&6[ 个人战绩 ]"
+  button_friends: "&d[ 好友 ]"
   button_room_detail: "&e[ 房间详情 ]"
   button_join_room_list: "&b[ 加入房间 ]"
-  button_create_default_room: "&a[ 创建跑酷房间 ]"
-  button_quickjoin: "&e[ 快速加入跑酷 ]"
   button_maps: "&d[ 地图管理 ]"
   button_leave: "&c[ 离开房间 ]"
   button_close: "&8[ 关闭 ]"
@@ -327,6 +391,10 @@ menu:
   game_tooltip_optional_plugins: "&7可选插件: &f{0}"
   room_button: "&8[&e{0}&8] &f{1} &8[&a{2}&8][&d{3}&8] &8[&b{4}&7/&b{5}&8] &6{6}"
   member_empty: "&8[ 空房间 ]"
+  player_list_header: "&8------- &f玩家列表 &8-------"
+  team_players_header: "&8------- &f{0}玩家 &8-------"
+  ungrouped_players_header: "&8------- &7未分队玩家 &8-------"
+  join_team_text: "&a[加入{0}]"
   member_button: "&f[ {0} ]"
   member_tooltip: "&7UUID: &f{0}"
   member_state_owner: "&7房主: &f{0}"

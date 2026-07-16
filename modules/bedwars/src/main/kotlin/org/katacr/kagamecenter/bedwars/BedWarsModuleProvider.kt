@@ -7,6 +7,13 @@ import org.katacr.kaGameCenter.api.GameModuleProvider
 import org.katacr.kaGameCenter.chat.GameChatChannel
 import org.katacr.kaGameCenter.chat.GameChatContext
 import org.katacr.kaGameCenter.i18n.ModuleLanguage
+import org.bukkit.permissions.PermissionDefault
+
+/** 集中声明由 BedWars 模块动态注册并在卸载时清理的权限节点。 */
+internal object BedWarsPermissions {
+    const val SHOUT = "kagamecenter.bedwars.shout"
+    const val SHOUT_BYPASS = "kagamecenter.bedwars.shout.bypass"
+}
 
 /** 装配 BedWars 模块服务并注册玩法、管理命令和事件入口。 */
 class BedWarsModuleProvider : GameModuleProvider {
@@ -26,6 +33,16 @@ class BedWarsModuleProvider : GameModuleProvider {
             "lang"
         ) { path -> javaClass.classLoader.getResourceAsStream(path) }
         language.reload()
+        context.registerPermission(
+            BedWarsPermissions.SHOUT,
+            "Allows using BedWars shout chat during a running game",
+            PermissionDefault.TRUE
+        )
+        context.registerPermission(
+            BedWarsPermissions.SHOUT_BYPASS,
+            "Bypasses the BedWars shout chat cooldown",
+            PermissionDefault.OP
+        )
         context.registerChatFormatter { chat ->
             if (!configService.isChatFormattingEnabled()) return@registerChatFormatter null
             val key = when (chat.variant) {
@@ -58,6 +75,8 @@ class BedWarsModuleProvider : GameModuleProvider {
                 context.eliminationService,
                 context.spectatorService,
                 context.roomResourceScopeService,
+                context.roomPresentationService,
+                context.reconnectStateService,
                 context.api.velocityBridgeService
             )
         )
@@ -69,6 +88,7 @@ class BedWarsModuleProvider : GameModuleProvider {
             context.mapEditorService,
             context.managedGameCatalog,
             context.menuService,
+            context.chestMenuService,
             context.editorPointCaptureService
         )
         context.registerAdminCommand(

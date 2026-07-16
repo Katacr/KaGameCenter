@@ -17,16 +17,24 @@ import org.katacr.kaGameCenter.data.PlayerStatsService
 import org.katacr.kaGameCenter.data.SqlStatsRepository
 import org.katacr.kaGameCenter.dialog.GameCenterDialogService
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
+import org.katacr.kaGameCenter.dialog.RoomDialogRefreshListener
 import org.katacr.kaGameCenter.display.GameDisplayService
+import org.katacr.kaGameCenter.display.PlayerStatusDisplayService
 import org.katacr.kaGameCenter.editor.MapEditorService
+import org.katacr.kaGameCenter.editor.MapEditorWorldExitListener
 import org.katacr.kaGameCenter.editor.EditorPointCaptureService
 import org.katacr.kaGameCenter.elimination.PlayerEliminationService
 import org.katacr.kaGameCenter.entity.RoomEntityOwnershipService
+import org.katacr.kaGameCenter.entity.RoomPresentationService
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.GameRegistry
 import org.katacr.kaGameCenter.game.GameManager
 import org.katacr.kaGameCenter.game.GameMapManager
 import org.katacr.kaGameCenter.game.GameRoomManager
+import org.katacr.kaGameCenter.friend.FriendCommandService
+import org.katacr.kaGameCenter.friend.FriendService
+import org.katacr.kaGameCenter.friend.MemoryFriendRepository
+import org.katacr.kaGameCenter.friend.SqlFriendRepository
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.listener.GamePlayerListener
 import org.katacr.kaGameCenter.map.ManagedMapPointService
@@ -39,6 +47,8 @@ import org.katacr.kaGameCenter.packet.PacketEventsDispatchService
 import org.katacr.kaGameCenter.result.GameResultService
 import org.katacr.kaGameCenter.runtime.PlayerRuntimeStateService
 import org.katacr.kaGameCenter.resource.RoomResourceScopeService
+import org.katacr.kaGameCenter.reconnect.RoomReconnectStateService
+import org.katacr.kaGameCenter.reload.GameCenterReloadService
 import org.katacr.kaGameCenter.selection.SelectionListener
 import org.katacr.kaGameCenter.selection.SelectionService
 import org.katacr.kaGameCenter.spectator.SpectatorService
@@ -77,6 +87,7 @@ class KaGameCenter : JavaPlugin() {
     private lateinit var managedGameCatalog: ManagedGameCatalogService
     private lateinit var gameCenterApi: GameCenterApi
     private lateinit var moduleService: ManagedGameModuleService
+    private lateinit var reloadService: GameCenterReloadService
     private lateinit var velocityBridgeService: VelocityBridgeService
     private lateinit var chatService: GameChatService
     private lateinit var roomTaskService: RoomTaskService
@@ -88,8 +99,13 @@ class KaGameCenter : JavaPlugin() {
     private lateinit var nametagService: PlayerNametagService
     private lateinit var eliminationService: PlayerEliminationService
     private lateinit var roomResourceScopeService: RoomResourceScopeService
+    private lateinit var roomPresentationService: RoomPresentationService
+    private lateinit var reconnectStateService: RoomReconnectStateService
     private lateinit var managedMapPointService: ManagedMapPointService
     private lateinit var spawnAssignmentService: SpawnAssignmentService
+    private lateinit var friendService: FriendService
+    private lateinit var friendCommandService: FriendCommandService
+    private lateinit var playerStatusDisplayService: PlayerStatusDisplayService
     private val moduleAdminCommands = linkedMapOf<String, ModuleAdminCommand>()
 
     companion object {
@@ -170,7 +186,8 @@ class KaGameCenter : JavaPlugin() {
         selectionService = SelectionService()
         editorPointCaptureService = EditorPointCaptureService(this, languageManager)
         spectatorService = SpectatorService(this, languageManager)
-        displayService = GameDisplayService(this, languageManager, teamService)
+        playerStatusDisplayService = PlayerStatusDisplayService()
+        displayService = GameDisplayService(this, languageManager, teamService, playerStatusDisplayService)
         gameManager = GameManager(this)
         gameMapManager = GameMapManager(this, gameManager)
         registry = GameRegistry(gameManager)
@@ -185,11 +202,14 @@ class KaGameCenter : JavaPlugin() {
         entityOwnershipService = RoomEntityOwnershipService()
         eliminationService = PlayerEliminationService(roomTaskService, spectatorService)
         roomResourceScopeService = RoomResourceScopeService(roomTaskService, entityOwnershipService, packetService, nametagService)
+        roomPresentationService = RoomPresentationService(roomResourceScopeService)
+        reconnectStateService = RoomReconnectStateService()
         managedMapPointService = ManagedMapPointService()
         spawnAssignmentService = SpawnAssignmentService()
         playerRuntimeStateService = PlayerRuntimeStateService()
         roomBroadcastService = RoomBroadcastService()
         statsService = createStatsService()
+        friendService = createFriendService()
         resultService = GameResultService(statsService)
         snapshotService = PlayerSnapshotService(this)
         velocityBridgeService = createVelocityBridgeService()
@@ -208,15 +228,28 @@ class KaGameCenter : JavaPlugin() {
             velocityBridgeService,
             nametagService,
             eliminationService,
-            roomResourceScopeService
+            roomResourceScopeService,
+            reconnectStateService
         )
         chatService = GameChatService(this, roomManager, teamService, languageManager)
-        menuService = GameCenterMenuService(this, dialogService, roomManager, gameMapManager, teamService, languageManager, managedGameCatalog, velocityBridgeService)
+        menuService = GameCenterMenuService(
+            this,
+            dialogService,
+            roomManager,
+            gameMapManager,
+            teamService,
+            languageManager,
+            managedGameCatalog,
+            velocityBridgeService,
+            friendService
+        )
         chestMenuService = ChestMenuService(this, menuService)
         menuService.bindChestMenuService(chestMenuService)
         gameCenterApi = GameCenterApi(
             registry,
             roomManager,
+            friendService,
+            playerStatusDisplayService,
             temporaryWorldService,
             languageManager,
             packetService,
@@ -231,6 +264,7 @@ class KaGameCenter : JavaPlugin() {
             chestMenuService,
             roomTaskService,
             entityOwnershipService,
+            roomPresentationService,
             resultService,
             playerRuntimeStateService,
             roomBroadcastService,
@@ -238,11 +272,13 @@ class KaGameCenter : JavaPlugin() {
             eliminationService,
             spectatorService,
             roomResourceScopeService,
+            reconnectStateService,
             managedMapPointService,
             spawnAssignmentService,
             velocityBridgeService
         )
         moduleService = ManagedGameModuleService(this, gameCenterApi, roomManager, temporaryWorldService, languageManager, packetService, selectionService, mapEditorService, managedGameCatalog, menuService, moduleAdminCommands)
+        reloadService = GameCenterReloadService(this, languageManager, gameMapManager, moduleService)
 
         gameManager.load()
         moduleService.load()
@@ -268,10 +304,24 @@ class KaGameCenter : JavaPlugin() {
         )
         server.pluginManager.registerEvents(SelectionListener(selectionService, languageManager), this)
         server.pluginManager.registerEvents(editorPointCaptureService, this)
+        server.pluginManager.registerEvents(MapEditorWorldExitListener(this, mapEditorService), this)
         server.pluginManager.registerEvents(GameChatListener(this, chatService), this)
         server.pluginManager.registerEvents(ChestMenuListener(chestMenuService), this)
+        server.pluginManager.registerEvents(RoomDialogRefreshListener(menuService), this)
 
-        val command = KaGameCenterCommand(menuService, chestMenuService, roomManager, gameMapManager, managedGameCatalog, languageManager, packetService, moduleAdminCommands)
+        friendCommandService = FriendCommandService(friendService, roomManager, spectatorService, languageManager)
+        val command = KaGameCenterCommand(
+            menuService,
+            chestMenuService,
+            roomManager,
+            gameMapManager,
+            managedGameCatalog,
+            languageManager,
+            packetService,
+            friendCommandService,
+            reloadService,
+            moduleAdminCommands
+        )
         getCommand("kagamecenter")?.setExecutor(command)
         getCommand("kagamecenter")?.tabCompleter = command
         getCommand("globalchat")?.setExecutor(GlobalChatCommand(chatService, languageManager))
@@ -309,6 +359,9 @@ class KaGameCenter : JavaPlugin() {
         if (::entityOwnershipService.isInitialized) {
             entityOwnershipService.clearAll()
         }
+        if (::reconnectStateService.isInitialized) {
+            reconnectStateService.clearAll()
+        }
         if (::playerRuntimeStateService.isInitialized) {
             playerRuntimeStateService.clearAll()
         }
@@ -330,6 +383,9 @@ class KaGameCenter : JavaPlugin() {
         if (::statsService.isInitialized) {
             statsService.close()
         }
+        if (::friendService.isInitialized) {
+            friendService.close()
+        }
         if (::languageManager.isInitialized) {
             logger.info(languageManager.getMessage("plugin.disabled"))
         }
@@ -348,6 +404,23 @@ class KaGameCenter : JavaPlugin() {
         }.getOrElse {
             logger.warning("Failed to initialize stats database, using memory stats: ${it.message}")
             PlayerStatsService(MemoryStatsRepository()).also { service -> service.init() }
+        }
+    }
+
+    /** 使用主数据库配置创建好友服务，初始化失败时回退到进程内存储。 */
+    private fun createFriendService(): FriendService {
+        val databaseConfig = DatabaseConfig.from(this, config)
+        val repository = if (!databaseConfig.enabled) {
+            MemoryFriendRepository()
+        } else {
+            SqlFriendRepository(this, databaseConfig)
+        }
+        return runCatching {
+            FriendService(this, repository).also(FriendService::init)
+        }.getOrElse { error ->
+            logger.warning("Failed to initialize friend database, using memory friends: ${error.message}")
+            runCatching(repository::close)
+            FriendService(this, MemoryFriendRepository()).also(FriendService::init)
         }
     }
 

@@ -13,10 +13,11 @@ import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.ManagedGameConfig
 import org.katacr.kaGameCenter.game.ModuleGameEditor
 import org.katacr.kaGameCenter.i18n.ModuleLanguage
+import org.katacr.kaGameCenter.menu.chest.ChestMenuService
 import org.katacr.kaGameCenter.packet.PacketDispatchService
 import org.katacr.kaGameCenter.world.TemporaryWorldService
 
-/** 通过 KaMenu 配置 BedWars 托管地图中的队伍、床、商店和资源点。 */
+/** 通过多级内置箱子菜单配置 BedWars 托管地图中的规则、队伍和资源点。 */
 class BedWarsManagedGameEditor(
     private val configService: BedWarsConfigService,
     private val language: ModuleLanguage,
@@ -25,9 +26,11 @@ class BedWarsManagedGameEditor(
     private val mapEditorService: MapEditorService,
     private val managedGameCatalog: ManagedGameCatalogService,
     private val menuService: GameCenterMenuService,
+    private val chestMenuService: ChestMenuService,
     private val pointCaptureService: EditorPointCaptureService
 ) : ModuleGameEditor {
     override val moduleId: String = "bedwars"
+    private val menuFactory = BedWarsEditorMenuFactory(language)
 
     /** 初始化 BedWars 托管配置的空队伍和公共生成器节点。 */
     override fun populateDefaults(
@@ -57,78 +60,11 @@ class BedWarsManagedGameEditor(
         config.createSection("bedwars.generators")
     }
 
-    /** 构造并打开 BedWars 地图编辑菜单。 */
+    /** 打开 BedWars 多级箱子编辑器首页。 */
     override fun openEditor(player: Player, game: ManagedGameConfig) {
         pointCaptureService.cancel(player)
         val configured = configService.readManagedGame(game)
-        val moduleConfig = configService.current()
-        val blockRules = moduleConfig.blockRules
-        val selectedTeam = configured.teams.firstOrNull()
-        val menu = YamlConfiguration()
-        menu.set("Title", language.getMessage("bedwars.editor_title", game.displayName))
-        menu.set("Settings.can_escape", true)
-        menu.set("Settings.after_action", "WAIT_FOR_RESPONSE")
-        menu.set("Body.summary.type", "message")
-        menu.set("Body.summary.width", 420)
-        menu.set("Body.summary.text", summary(game, configured))
-        input(menu, "team_id", "bedwars.editor_input_team_id", selectedTeam?.id ?: "red", 24)
-        input(menu, "team_name", "bedwars.editor_input_team_name", selectedTeam?.displayName ?: "红队", 32)
-        input(menu, "team_color", "bedwars.editor_input_team_color", selectedTeam?.color?.name ?: "RED", 16)
-        input(menu, "team_max_players", "bedwars.editor_input_team_max_players", selectedTeam?.maxPlayers?.toString() ?: "1", 3)
-        input(menu, "item_group", "bedwars.editor_input_item_group", configured.itemGroup, 32)
-        input(menu, "selector_group", "bedwars.editor_input_selector_group", game.selectorGroup, 32)
-        input(menu, "island_radius", "bedwars.editor_input_island_radius", configured.islandRadius.toString(), 8)
-        input(menu, "disable_empty_generators", "bedwars.editor_input_disable_empty_generators", configured.disableEmptyTeamGenerators.toString(), 5)
-        input(menu, "disable_empty_npcs", "bedwars.editor_input_disable_empty_npcs", configured.disableEmptyTeamNpcs.toString(), 5)
-        input(menu, "vanilla_death_drops", "bedwars.editor_input_vanilla_death_drops", configured.vanillaDeathDrops.toString(), 5)
-        input(menu, "use_bed_hologram", "bedwars.editor_input_use_bed_hologram", configured.useBedHologram.toString(), 5)
-        input(menu, "world_border", "bedwars.editor_input_world_border", (configured.worldBorderSize ?: moduleConfig.worldBorderSize).toString(), 8)
-        input(menu, "allow_spectate", "bedwars.editor_input_allow_spectate", configured.allowSpectate.toString(), 5)
-        input(menu, "allow_map_break", "bedwars.editor_input_allow_map_break", configured.allowMapBreak.toString(), 5)
-        input(menu, "spawn_protection", "bedwars.editor_input_spawn_protection", (configured.spawnProtectionRadius ?: blockRules.spawnProtectionRadius).toString(), 6)
-        input(menu, "shop_protection", "bedwars.editor_input_shop_protection", (configured.shopProtectionRadius ?: blockRules.shopProtectionRadius).toString(), 6)
-        input(menu, "upgrades_protection", "bedwars.editor_input_upgrades_protection", (configured.upgradeShopProtectionRadius ?: blockRules.shopProtectionRadius).toString(), 6)
-        input(menu, "generator_protection", "bedwars.editor_input_generator_protection", (configured.generatorProtectionRadius ?: blockRules.generatorProtectionRadius).toString(), 6)
-        input(menu, "show_eliminated", "bedwars.editor_input_show_eliminated", configured.showEliminatedAtGameEnd.toString(), 5)
-        input(menu, "teleport_eliminated", "bedwars.editor_input_teleport_eliminated", configured.teleportEliminatedAtGameEnd.toString(), 5)
-        input(menu, "chat_top_statistic", "bedwars.editor_input_chat_top_statistic", (configured.chatTopStatistic ?: moduleConfig.chatTopStatistic).name, 24)
-        input(menu, "chat_top_hide_missing", "bedwars.editor_input_chat_top_hide_missing", (configured.chatTopHideMissing ?: moduleConfig.chatTopHideMissing).toString(), 5)
-        input(menu, "sidebar_top_statistic", "bedwars.editor_input_sidebar_top_statistic", (configured.sidebarTopStatistic ?: moduleConfig.sidebarTopStatistic).name, 24)
-        input(menu, "sidebar_top_hide_missing", "bedwars.editor_input_sidebar_top_hide_missing", (configured.sidebarTopHideMissing ?: moduleConfig.sidebarTopHideMissing).toString(), 5)
-        input(menu, "game_rules", "bedwars.editor_input_game_rules", configured.gameRules.joinToString(";"), 512)
-        input(menu, "generator_id", "bedwars.editor_input_generator_id", "iron", 24)
-        input(menu, "generator_type", "bedwars.editor_input_generator_type", "IRON", 16)
-        input(menu, "generator_interval", "bedwars.editor_input_generator_interval", "40", 6)
-        menu.set("Bottom.type", "multi")
-        menu.set("Bottom.columns", 3)
-        button(menu, "open_world", "bedwars.editor_button_open_world", game, "open-world")
-        button(menu, "save_world", "bedwars.editor_button_save_world", game, "save-world")
-        button(menu, "close_world", "bedwars.editor_button_close_world", game, "close-world")
-        button(menu, "set_lobby", "bedwars.editor_button_set_lobby", game, "set-lobby")
-        button(menu, "set_spectator", "bedwars.editor_button_set_spectator", game, "set-spectator")
-        button(menu, "set_void", "bedwars.editor_button_set_void_y", game, "set-void-y")
-        button(menu, "set_build_y", "bedwars.editor_button_set_max_build_y", game, "set-max-build-y")
-        button(menu, "save_item_group", "bedwars.editor_button_save_item_group", game, "save-item-group")
-        button(menu, "save_selector_group", "bedwars.editor_button_save_selector_group", game, "save-selector-group")
-        button(menu, "save_arena_rules", "bedwars.editor_button_save_arena_rules", game, "save-arena-rules")
-        button(menu, "save_map_protection", "bedwars.editor_button_save_map_protection", game, "save-map-protection")
-        button(menu, "save_game_end_rules", "bedwars.editor_button_save_game_end_rules", game, "save-game-end-rules")
-        button(menu, "save_team", "bedwars.editor_button_save_team", game, "save-team")
-        button(menu, "remove_team", "bedwars.editor_button_remove_team", game, "remove-team")
-        button(menu, "set_spawn", "bedwars.editor_button_set_team_spawn", game, "set-team-spawn")
-        button(menu, "set_bed", "bedwars.editor_button_set_team_bed", game, "set-team-bed")
-        button(menu, "set_kill_drops", "bedwars.editor_button_set_team_kill_drops", game, "set-team-kill-drops")
-        button(menu, "set_shop", "bedwars.editor_button_set_team_shop", game, "set-team-shop")
-        button(menu, "set_upgrade", "bedwars.editor_button_set_team_upgrade", game, "set-team-upgrade")
-        button(menu, "save_team_gen", "bedwars.editor_button_save_team_generator", game, "save-team-generator")
-        button(menu, "remove_team_gen", "bedwars.editor_button_remove_team_generator", game, "remove-team-generator")
-        button(menu, "save_gen", "bedwars.editor_button_save_generator", game, "save-generator")
-        button(menu, "remove_gen", "bedwars.editor_button_remove_generator", game, "remove-generator")
-        button(menu, "validate", "bedwars.editor_button_validate", game, "validate")
-        button(menu, "preview", "bedwars.editor_button_preview", game, "preview")
-        menu.set("Bottom.exit.text", language.getMessage("menu.button_back"))
-        menu.set("Bottom.exit.actions", listOf("kgc:open-admin-managed-games"))
-        menuService.openExternalConfig(player, menu, "kagamecenter:bedwars-editor:${game.globalId}")
+        openChest(player, game, "main", menuFactory.main(game, configured))
     }
 
     /** 执行编辑菜单动作并在修改后刷新菜单。 */
@@ -138,7 +74,93 @@ class BedWarsManagedGameEditor(
         action: String,
         variables: Map<String, String>
     ): Boolean {
-        when (action.lowercase()) {
+        val parts = action.trim().split(Regex("\\s+")).filter(String::isNotBlank)
+        val command = parts.firstOrNull()?.lowercase() ?: return false
+        when (command) {
+            "open-section" -> {
+                openSection(player, game, parts.getOrNull(1) ?: "main")
+                return true
+            }
+            "open-teams-page" -> {
+                openTeams(player, game, parts.getOrNull(1)?.toIntOrNull() ?: 0)
+                return true
+            }
+            "open-generators-page" -> {
+                openGenerators(player, game, parts.getOrNull(1)?.toIntOrNull() ?: 0)
+                return true
+            }
+            "open-team" -> {
+                openTeam(player, game, parts.getOrNull(1))
+                return true
+            }
+            "open-generator" -> {
+                openGenerator(player, game, null, parts.getOrNull(1))
+                return true
+            }
+            "open-team-generator" -> {
+                openGenerator(player, game, parts.getOrNull(1), parts.getOrNull(2))
+                return true
+            }
+            "open-form" -> {
+                openForm(player, game, parts.drop(1))
+                return true
+            }
+            "toggle-arena" -> {
+                toggleArenaRule(game, parts.getOrNull(1))
+                openSection(player, game, "arena")
+                return true
+            }
+            "adjust-arena" -> {
+                adjustArenaRule(game, parts.getOrNull(1), parts.getOrNull(2)?.toDoubleOrNull())
+                openSection(player, game, "arena")
+                return true
+            }
+            "toggle-protection" -> {
+                toggleProtectionRule(game, parts.getOrNull(1))
+                openSection(player, game, "protection")
+                return true
+            }
+            "adjust-protection" -> {
+                adjustProtectionRule(game, parts.getOrNull(1), parts.getOrNull(2)?.toDoubleOrNull())
+                openSection(player, game, "protection")
+                return true
+            }
+            "toggle-game-end" -> {
+                toggleGameEndRule(game, parts.getOrNull(1))
+                openSection(player, game, "game-end")
+                return true
+            }
+            "game-end-stat" -> {
+                cycleGameEndStatistic(game, parts.getOrNull(1), parts.getOrNull(2)?.toIntOrNull() ?: 1)
+                openSection(player, game, "game-end")
+                return true
+            }
+            "generator-type" -> {
+                cycleGeneratorType(game, parts.getOrNull(1), parts.getOrNull(2), parts.getOrNull(3)?.toIntOrNull() ?: 1)
+                reopenGenerator(player, game, parts.getOrNull(1), parts.getOrNull(2))
+                return true
+            }
+            "adjust-generator-interval" -> {
+                adjustGeneratorInterval(game, parts.getOrNull(1), parts.getOrNull(2), parts.getOrNull(3)?.toIntOrNull())
+                reopenGenerator(player, game, parts.getOrNull(1), parts.getOrNull(2))
+                return true
+            }
+            "set-generator-position" -> {
+                val scope = parts.getOrNull(1)
+                val generatorId = parts.getOrNull(2)
+                startExistingGeneratorCapture(player, game, scope, generatorId)
+                return true
+            }
+            "start-generator-batch" -> {
+                val type = BedWarsGeneratorType.parse(parts.getOrNull(1))
+                    ?: return fail(player, "bedwars.editor_generator_type_invalid")
+                startPublicGeneratorBatchCapture(player, game, type)
+                return true
+            }
+            "start-team-wizard" -> {
+                startTeamCaptureWizard(player, game, parts.getOrNull(1))
+                return true
+            }
             "open-world" -> openWorld(player, game)
             "save-world" -> saveWorld(player, game)
             "close-world" -> closeWorld(player, game)
@@ -170,6 +192,7 @@ class BedWarsManagedGameEditor(
                 configService.saveManagedItemGroup(game, variable(variables, "item_group") ?: "default")
                 player.sendMessage(Component.text(language.getMessage("bedwars.editor_item_group_saved")))
             }
+            "save-groups" -> saveGroups(player, game, variables)
             "save-selector-group" -> {
                 val group = variable(variables, "selector_group")?.lowercase()
                     ?.takeIf { it.length <= 32 && it.all { char -> char.isLetterOrDigit() || char == '_' || char == '-' } }
@@ -184,43 +207,432 @@ class BedWarsManagedGameEditor(
             "save-map-protection" -> saveMapProtectionRules(player, game, variables)
             "save-game-end-rules" -> saveGameEndRules(player, game, variables)
             "save-team" -> saveTeam(player, game, variables)
-            "remove-team" -> removeTeam(player, game, variables)
+            "remove-team" -> removeTeam(player, game, variables + mapOf("team_id" to (parts.getOrNull(1) ?: "")))
             "set-team-spawn" -> {
-                startTeamPointCapture(player, game, variables, "spawn", "bedwars.editor_field_team_spawn", block = false)
+                startTeamPointCapture(player, game, variables + actionVariable(parts, 1, "team_id"), "spawn", "bedwars.editor_field_team_spawn", block = false)
                 return true
             }
             "set-team-bed" -> {
-                startTeamPointCapture(player, game, variables, "bed", "bedwars.editor_field_team_bed", block = true)
+                startTeamPointCapture(player, game, variables + actionVariable(parts, 1, "team_id"), "bed", "bedwars.editor_field_team_bed", block = true)
                 return true
             }
             "set-team-kill-drops" -> {
-                startTeamPointCapture(player, game, variables, "kill-drops", "bedwars.editor_field_team_kill_drops", block = false)
+                startTeamPointCapture(player, game, variables + actionVariable(parts, 1, "team_id"), "kill-drops", "bedwars.editor_field_team_kill_drops", block = false)
                 return true
             }
             "set-team-shop" -> {
-                startTeamPointCapture(player, game, variables, "shop", "bedwars.editor_field_team_shop", block = false)
+                startTeamPointCapture(
+                    player,
+                    game,
+                    variables + actionVariable(parts, 1, "team_id"),
+                    "shop",
+                    "bedwars.editor_field_team_shop",
+                    block = false,
+                    precise = true
+                )
                 return true
             }
             "set-team-upgrade" -> {
-                startTeamPointCapture(player, game, variables, "upgrade-shop", "bedwars.editor_field_team_upgrade", block = false)
+                startTeamPointCapture(
+                    player,
+                    game,
+                    variables + actionVariable(parts, 1, "team_id"),
+                    "upgrade-shop",
+                    "bedwars.editor_field_team_upgrade",
+                    block = false,
+                    precise = true
+                )
                 return true
             }
             "save-team-generator" -> {
                 startGeneratorCapture(player, game, variables, teamScoped = true)
                 return true
             }
-            "remove-team-generator" -> removeGenerator(player, game, variables, teamScoped = true)
+            "remove-team-generator" -> removeGenerator(player, game, variables + mapOf(
+                "team_id" to (parts.getOrNull(1) ?: ""),
+                "generator_id" to (parts.getOrNull(2) ?: "")
+            ), teamScoped = true)
             "save-generator" -> {
                 startGeneratorCapture(player, game, variables, teamScoped = false)
                 return true
             }
-            "remove-generator" -> removeGenerator(player, game, variables, teamScoped = false)
+            "remove-generator" -> removeGenerator(player, game, variables + actionVariable(parts, 1, "generator_id"), teamScoped = false)
+            "save-game-rules" -> saveGameRules(player, game, variables)
             "validate" -> validate(player, game)
             "preview" -> preview(player, game)
             else -> return false
         }
         openEditor(player, managedGameCatalog.get(game.globalId) ?: game)
         return true
+    }
+
+    /** 使用内置箱子菜单服务打开一个程序化生成的 BedWars 编辑页。 */
+    private fun openChest(player: Player, game: ManagedGameConfig, section: String, menu: YamlConfiguration) {
+        chestMenuService.openConfig(
+            player,
+            menu,
+            "kagamecenter:bedwars-editor:${game.globalId}:$section",
+            mapOf("game.id" to game.globalId, "game.section" to section)
+        )
+    }
+
+    /** 按分类名称读取最新配置并打开对应箱子菜单。 */
+    private fun openSection(player: Player, game: ManagedGameConfig, section: String) {
+        val currentGame = managedGameCatalog.get(game.globalId) ?: game
+        val configured = configService.readManagedGame(currentGame)
+        val menu = when (section.lowercase()) {
+            "overview" -> menuFactory.overview(currentGame, summary(currentGame, configured))
+            "world" -> menuFactory.world(currentGame, configured)
+            "arena" -> menuFactory.arena(currentGame, configured)
+            "protection" -> menuFactory.protection(currentGame, configured, configService.current())
+            "game-end" -> menuFactory.gameEnd(currentGame, configured, configService.current())
+            else -> menuFactory.main(currentGame, configured)
+        }
+        openChest(player, currentGame, section, menu)
+    }
+
+    /** 打开指定页码的队伍列表。 */
+    private fun openTeams(player: Player, game: ManagedGameConfig, page: Int) {
+        val currentGame = managedGameCatalog.get(game.globalId) ?: game
+        val configured = configService.readManagedGame(currentGame)
+        openChest(player, currentGame, "teams:$page", menuFactory.teams(currentGame, configured, page))
+    }
+
+    /** 打开指定队伍详情；队伍不存在时返回列表并提示。 */
+    private fun openTeam(player: Player, game: ManagedGameConfig, teamId: String?) {
+        val currentGame = managedGameCatalog.get(game.globalId) ?: game
+        val team = configService.readManagedGame(currentGame).teams.firstOrNull { it.id.equals(teamId, true) }
+        if (team == null) {
+            fail(player, "bedwars.editor_team_missing", teamId ?: "-")
+            openTeams(player, currentGame, 0)
+            return
+        }
+        openChest(player, currentGame, "team:${team.id}", menuFactory.team(currentGame, team))
+    }
+
+    /** 打开指定页码的公共生成器列表。 */
+    private fun openGenerators(player: Player, game: ManagedGameConfig, page: Int) {
+        val currentGame = managedGameCatalog.get(game.globalId) ?: game
+        val configured = configService.readManagedGame(currentGame)
+        openChest(player, currentGame, "generators:$page", menuFactory.generators(currentGame, configured, page))
+    }
+
+    /** 打开公共或队伍生成器详情；目标不存在时返回所属列表。 */
+    private fun openGenerator(player: Player, game: ManagedGameConfig, teamId: String?, generatorId: String?) {
+        val currentGame = managedGameCatalog.get(game.globalId) ?: game
+        val configured = configService.readManagedGame(currentGame)
+        val generator = if (teamId == null) {
+            configured.generators.firstOrNull { it.id.equals(generatorId, true) }
+        } else {
+            configured.teams.firstOrNull { it.id.equals(teamId, true) }
+                ?.generators?.firstOrNull { it.id.equals(generatorId, true) }
+        }
+        if (generator == null) {
+            fail(player, "bedwars.editor_generator_missing", generatorId ?: "-")
+            if (teamId == null) openGenerators(player, currentGame, 0) else openTeam(player, currentGame, teamId)
+            return
+        }
+        openChest(player, currentGame, "generator:${teamId ?: "public"}:${generator.id}", menuFactory.generator(currentGame, generator, teamId))
+    }
+
+    /** 根据动作中的 public 或队伍作用域刷新生成器详情。 */
+    private fun reopenGenerator(player: Player, game: ManagedGameConfig, scope: String?, generatorId: String?) {
+        openGenerator(player, game, scope?.takeUnless { it.equals("public", true) }, generatorId)
+    }
+
+    /** 打开只包含当前分类复杂文本字段的小型专项表单。 */
+    private fun openForm(player: Player, game: ManagedGameConfig, arguments: List<String>) {
+        val form = arguments.firstOrNull()?.lowercase() ?: return
+        val currentGame = managedGameCatalog.get(game.globalId) ?: game
+        val configured = configService.readManagedGame(currentGame)
+        val menu = dialog(language.getMessage("bedwars.editor_form_title", language.getMessage("bedwars.editor_form_$form")))
+        when (form) {
+            "groups" -> {
+                input(menu, "item_group", "bedwars.editor_input_item_group", configured.itemGroup, 32)
+                input(menu, "selector_group", "bedwars.editor_input_selector_group", currentGame.selectorGroup, 32)
+                formButton(menu, "save", "bedwars.editor_form_save", currentGame, "save-groups")
+            }
+            "team" -> {
+                val selected = configured.teams.firstOrNull { it.id.equals(arguments.getOrNull(1), true) }
+                input(menu, "team_id", "bedwars.editor_input_team_id", selected?.id ?: nextTeamId(configured), 24)
+                input(menu, "team_name", "bedwars.editor_input_team_name", selected?.displayName ?: language.getMessage("bedwars.editor_team_default_name"), 32)
+                input(menu, "team_color", "bedwars.editor_input_team_color", selected?.color?.name ?: nextTeamColor(configured).name, 16)
+                input(menu, "team_max_players", "bedwars.editor_input_team_max_players", selected?.maxPlayers?.toString() ?: "1", 3)
+                formButton(menu, "save", "bedwars.editor_form_save", currentGame, "save-team")
+            }
+            "generator", "team-generator" -> {
+                val teamId = arguments.getOrNull(1)
+                if (form == "team-generator") input(menu, "team_id", "bedwars.editor_input_team_id", teamId.orEmpty(), 24)
+                input(menu, "generator_id", "bedwars.editor_input_generator_id", nextGeneratorId(configured, teamId), 24)
+                input(menu, "generator_type", "bedwars.editor_input_generator_type", if (teamId == null) "DIAMOND" else "IRON", 16)
+                input(menu, "generator_interval", "bedwars.editor_input_generator_interval", "40", 6)
+                formButton(menu, "save", "bedwars.editor_form_capture", currentGame, if (teamId == null) "save-generator" else "save-team-generator")
+            }
+            "game-rules" -> {
+                input(menu, "game_rules", "bedwars.editor_input_game_rules", configured.gameRules.joinToString(";"), 512)
+                formButton(menu, "save", "bedwars.editor_form_save", currentGame, "save-game-rules")
+            }
+            else -> return
+        }
+        menu.set("Bottom.exit.text", language.getMessage("bedwars.editor_menu_back"))
+        menu.set("Bottom.exit.actions", listOf("kgc:module-game-action ${currentGame.globalId} open-section main"))
+        menuService.openExternalConfig(player, menu, "kagamecenter:bedwars-editor-form:${currentGame.globalId}:$form")
+    }
+
+    /** 构造专项输入表单的公共 Dialog 元数据。 */
+    private fun dialog(title: String): YamlConfiguration {
+        val menu = YamlConfiguration()
+        menu.set("Title", title)
+        menu.set("Settings.can_escape", true)
+        menu.set("Settings.after_action", "WAIT_FOR_RESPONSE")
+        menu.set("Body.help.type", "message")
+        menu.set("Body.help.width", 360)
+        menu.set("Body.help.text", listOf(language.getMessage("bedwars.editor_form_help")))
+        menu.set("Bottom.type", "multi")
+        menu.set("Bottom.columns", 1)
+        return menu
+    }
+
+    /** 向专项表单添加保存或开始采集按钮。 */
+    private fun formButton(menu: YamlConfiguration, id: String, textKey: String, game: ManagedGameConfig, action: String) {
+        menu.set("Bottom.buttons.$id.text", language.getMessage(textKey))
+        menu.set("Bottom.buttons.$id.actions", listOf("kgc:module-game-action ${game.globalId} $action"))
+    }
+
+    /** 同时保存物品组和选择器分组字段。 */
+    private fun saveGroups(player: Player, game: ManagedGameConfig, variables: Map<String, String>) {
+        val itemGroup = variable(variables, "item_group") ?: "default"
+        val selectorGroup = variable(variables, "selector_group")?.lowercase()
+            ?.takeIf { it.length <= 32 && it.all { char -> char.isLetterOrDigit() || char == '_' || char == '-' } }
+            ?: return missing(player, "bedwars.editor_selector_group_invalid")
+        configService.saveManagedItemGroup(game, itemGroup)
+        managedGameCatalog.save(game) { it.set("selector-group", selectorGroup) }
+        player.sendMessage(Component.text(language.getMessage("bedwars.editor_groups_saved")))
+    }
+
+    /** 切换一项基础竞技场布尔规则并保存整组当前值。 */
+    private fun toggleArenaRule(game: ManagedGameConfig, field: String?) {
+        val configured = configService.readManagedGame(game)
+        configService.saveManagedArenaRules(
+            game,
+            configured.islandRadius,
+            if (field == "disable-generators") !configured.disableEmptyTeamGenerators else configured.disableEmptyTeamGenerators,
+            if (field == "disable-npcs") !configured.disableEmptyTeamNpcs else configured.disableEmptyTeamNpcs,
+            if (field == "vanilla-drops") !configured.vanillaDeathDrops else configured.vanillaDeathDrops,
+            if (field == "bed-hologram") !configured.useBedHologram else configured.useBedHologram
+        )
+    }
+
+    /** 按给定步长调整岛屿半径并保存。 */
+    private fun adjustArenaRule(game: ManagedGameConfig, field: String?, delta: Double?) {
+        if (field != "island-radius" || delta == null) return
+        val configured = configService.readManagedGame(game)
+        configService.saveManagedArenaRules(
+            game,
+            (configured.islandRadius + delta).coerceIn(1.0, 128.0),
+            configured.disableEmptyTeamGenerators,
+            configured.disableEmptyTeamNpcs,
+            configured.vanillaDeathDrops,
+            configured.useBedHologram
+        )
+    }
+
+    /** 切换旁观或模板方块破坏规则并保存整组保护值。 */
+    private fun toggleProtectionRule(game: ManagedGameConfig, field: String?) {
+        val configured = configService.readManagedGame(game)
+        saveProtection(
+            game,
+            configured,
+            allowSpectate = if (field == "allow-spectate") !configured.allowSpectate else configured.allowSpectate,
+            allowMapBreak = if (field == "allow-map-break") !configured.allowMapBreak else configured.allowMapBreak
+        )
+    }
+
+    /** 按字段和步长调整世界边界或保护半径。 */
+    private fun adjustProtectionRule(game: ManagedGameConfig, field: String?, delta: Double?) {
+        if (delta == null) return
+        val configured = configService.readManagedGame(game)
+        val moduleConfig = configService.current()
+        val rules = moduleConfig.blockRules
+        saveProtection(
+            game,
+            configured,
+            worldBorder = if (field == "world-border") ((configured.worldBorderSize ?: moduleConfig.worldBorderSize) + delta.toInt()).coerceIn(0, 60_000_000) else null,
+            spawn = if (field == "spawn") ((configured.spawnProtectionRadius ?: rules.spawnProtectionRadius) + delta).coerceIn(0.0, 32.0) else null,
+            shop = if (field == "shop") ((configured.shopProtectionRadius ?: rules.shopProtectionRadius) + delta).coerceIn(0.0, 32.0) else null,
+            upgrade = if (field == "upgrade") ((configured.upgradeShopProtectionRadius ?: rules.shopProtectionRadius) + delta).coerceIn(0.0, 32.0) else null,
+            generator = if (field == "generator") ((configured.generatorProtectionRadius ?: rules.generatorProtectionRadius) + delta).coerceIn(0.0, 32.0) else null
+        )
+    }
+
+    /** 使用当前值补齐未修改字段并保存地图保护配置。 */
+    private fun saveProtection(
+        game: ManagedGameConfig,
+        configured: BedWarsGameConfig,
+        worldBorder: Int? = null,
+        allowSpectate: Boolean = configured.allowSpectate,
+        allowMapBreak: Boolean = configured.allowMapBreak,
+        spawn: Double? = null,
+        shop: Double? = null,
+        upgrade: Double? = null,
+        generator: Double? = null
+    ) {
+        val moduleConfig = configService.current()
+        val rules = moduleConfig.blockRules
+        configService.saveManagedMapProtectionRules(
+            game,
+            worldBorder ?: configured.worldBorderSize ?: moduleConfig.worldBorderSize,
+            allowSpectate,
+            allowMapBreak,
+            spawn ?: configured.spawnProtectionRadius ?: rules.spawnProtectionRadius,
+            shop ?: configured.shopProtectionRadius ?: rules.shopProtectionRadius,
+            upgrade ?: configured.upgradeShopProtectionRadius ?: rules.shopProtectionRadius,
+            generator ?: configured.generatorProtectionRadius ?: rules.generatorProtectionRadius
+        )
+    }
+
+    /** 切换一项结算布尔规则并保存整组当前值。 */
+    private fun toggleGameEndRule(game: ManagedGameConfig, field: String?) {
+        val configured = configService.readManagedGame(game)
+        val moduleConfig = configService.current()
+        saveGameEnd(
+            game,
+            configured,
+            showEliminated = if (field == "show-eliminated") !configured.showEliminatedAtGameEnd else configured.showEliminatedAtGameEnd,
+            teleportEliminated = if (field == "teleport-eliminated") !configured.teleportEliminatedAtGameEnd else configured.teleportEliminatedAtGameEnd,
+            chatHideMissing = if (field == "chat-hide") !(configured.chatTopHideMissing ?: moduleConfig.chatTopHideMissing) else null,
+            sidebarHideMissing = if (field == "sidebar-hide") !(configured.sidebarTopHideMissing ?: moduleConfig.sidebarTopHideMissing) else null
+        )
+    }
+
+    /** 循环切换聊天或 Sidebar 结算榜统计项。 */
+    private fun cycleGameEndStatistic(game: ManagedGameConfig, target: String?, direction: Int) {
+        val configured = configService.readManagedGame(game)
+        val moduleConfig = configService.current()
+        saveGameEnd(
+            game,
+            configured,
+            chatStatistic = if (target == "chat") cycle(configured.chatTopStatistic ?: moduleConfig.chatTopStatistic, direction) else null,
+            sidebarStatistic = if (target == "sidebar") cycle(configured.sidebarTopStatistic ?: moduleConfig.sidebarTopStatistic, direction) else null
+        )
+    }
+
+    /** 校验专项表单中的 GameRule 字符串并保存。 */
+    private fun saveGameRules(player: Player, game: ManagedGameConfig, variables: Map<String, String>) {
+        val rules = parseGameRules(variables["game_rules"]?.trim().orEmpty())
+            ?: return missing(player, "bedwars.editor_game_rule_invalid")
+        saveGameEnd(game, configService.readManagedGame(game), gameRules = rules)
+        player.sendMessage(Component.text(language.getMessage("bedwars.editor_game_end_rules_saved")))
+    }
+
+    /** 使用当前值补齐未修改字段并保存结算规则。 */
+    private fun saveGameEnd(
+        game: ManagedGameConfig,
+        configured: BedWarsGameConfig,
+        showEliminated: Boolean = configured.showEliminatedAtGameEnd,
+        teleportEliminated: Boolean = configured.teleportEliminatedAtGameEnd,
+        chatStatistic: BedWarsResultStatistic? = null,
+        chatHideMissing: Boolean? = null,
+        sidebarStatistic: BedWarsResultStatistic? = null,
+        sidebarHideMissing: Boolean? = null,
+        gameRules: List<String> = configured.gameRules
+    ) {
+        val moduleConfig = configService.current()
+        configService.saveManagedGameEndRules(
+            game,
+            showEliminated,
+            teleportEliminated,
+            chatStatistic ?: configured.chatTopStatistic ?: moduleConfig.chatTopStatistic,
+            chatHideMissing ?: configured.chatTopHideMissing ?: moduleConfig.chatTopHideMissing,
+            sidebarStatistic ?: configured.sidebarTopStatistic ?: moduleConfig.sidebarTopStatistic,
+            sidebarHideMissing ?: configured.sidebarTopHideMissing ?: moduleConfig.sidebarTopHideMissing,
+            gameRules
+        )
+    }
+
+    /** 循环切换公共或队伍生成器的资源类型。 */
+    private fun cycleGeneratorType(game: ManagedGameConfig, scope: String?, generatorId: String?, direction: Int) {
+        val generator = findGenerator(game, scope, generatorId) ?: return
+        saveGenerator(game, scope, generator, cycle(generator.type, direction), generator.intervalTicks)
+    }
+
+    /** 按步长调整公共或队伍生成器刷新间隔。 */
+    private fun adjustGeneratorInterval(game: ManagedGameConfig, scope: String?, generatorId: String?, delta: Int?) {
+        if (delta == null) return
+        val generator = findGenerator(game, scope, generatorId) ?: return
+        saveGenerator(game, scope, generator, generator.type, (generator.intervalTicks + delta).coerceIn(1, 72_000))
+    }
+
+    /** 读取公共或队伍作用域中的生成器。 */
+    private fun findGenerator(game: ManagedGameConfig, scope: String?, generatorId: String?): BedWarsGeneratorConfig? {
+        val configured = configService.readManagedGame(game)
+        return if (scope.equals("public", true)) {
+            configured.generators.firstOrNull { it.id.equals(generatorId, true) }
+        } else {
+            configured.teams.firstOrNull { it.id.equals(scope, true) }
+                ?.generators?.firstOrNull { it.id.equals(generatorId, true) }
+        }
+    }
+
+    /** 保留生成器点位并更新类型或刷新间隔。 */
+    private fun saveGenerator(game: ManagedGameConfig, scope: String?, generator: BedWarsGeneratorConfig, type: BedWarsGeneratorType, interval: Int) {
+        if (scope.equals("public", true)) {
+            configService.upsertManagedGenerator(game, generator.id, type, generator.point, interval)
+        } else if (scope != null) {
+            configService.upsertManagedTeamGenerator(game, scope, generator.id, type, generator.point, interval)
+        }
+    }
+
+    /** 启动已存在生成器的重新定位采集，并保留其类型与间隔。 */
+    private fun startExistingGeneratorCapture(player: Player, game: ManagedGameConfig, scope: String?, generatorId: String?) {
+        val generator = findGenerator(game, scope, generatorId)
+            ?: return missing(player, "bedwars.editor_generator_id_missing")
+        startGeneratorCapture(
+            player,
+            game,
+            buildMap {
+                put("generator_id", generator.id)
+                put("generator_type", generator.type.name)
+                put("generator_interval", generator.intervalTicks.toString())
+                if (!scope.equals("public", true) && scope != null) put("team_id", scope)
+            },
+            teamScoped = !scope.equals("public", true)
+        )
+    }
+
+    /** 按方向循环枚举值，并在首尾处环绕。 */
+    private inline fun <reified T : Enum<T>> cycle(value: T, direction: Int): T {
+        val values = enumValues<T>()
+        return values[Math.floorMod(value.ordinal + direction, values.size)]
+    }
+
+    /** 从动作参数安全构造一个表单变量覆盖项。 */
+    private fun actionVariable(parts: List<String>, index: Int, key: String): Map<String, String> {
+        return parts.getOrNull(index)?.let { mapOf(key to it) }.orEmpty()
+    }
+
+    /** 为新队伍选择尚未使用的稳定 ID。 */
+    private fun nextTeamId(configured: BedWarsGameConfig): String {
+        val used = configured.teams.map { it.id }.toSet()
+        return DEFAULT_TEAM_IDS.firstOrNull { it !in used } ?: "team-${configured.teams.size + 1}"
+    }
+
+    /** 为新队伍选择尚未使用的标准队色。 */
+    private fun nextTeamColor(configured: BedWarsGameConfig): BedWarsTeamColor {
+        val used = configured.teams.map { it.color }.toSet()
+        return BedWarsTeamColor.entries.firstOrNull { it !in used } ?: BedWarsTeamColor.WHITE
+    }
+
+    /** 为新生成器构造在当前作用域内不冲突的默认 ID。 */
+    private fun nextGeneratorId(configured: BedWarsGameConfig, teamId: String?): String {
+        val generators = teamId?.let { id -> configured.teams.firstOrNull { it.id.equals(id, true) }?.generators }.orEmpty()
+            .ifEmpty { if (teamId == null) configured.generators else emptyList() }
+        val prefix = if (teamId == null) "diamond" else "iron"
+        val used = generators.map { it.id }.toSet()
+        if (prefix !in used) return prefix
+        var index = 2
+        while ("$prefix-$index" in used) index++
+        return "$prefix-$index"
     }
 
     private fun summary(game: ManagedGameConfig, configured: BedWarsGameConfig): List<String> {
@@ -513,7 +925,8 @@ class BedWarsManagedGameEditor(
         variables: Map<String, String>,
         field: String,
         fieldKey: String,
-        block: Boolean
+        block: Boolean,
+        precise: Boolean = false
     ) {
         val teamId = variable(variables, "team_id") ?: return missing(player, "bedwars.editor_team_id_missing")
         if (configService.readManagedGame(game).teams.none { it.id.equals(teamId, ignoreCase = true) }) {
@@ -530,8 +943,11 @@ class BedWarsManagedGameEditor(
             capturePlayer.sendMessage(Component.text(language.getMessage("bedwars.editor_saved_field", language.getMessage(fieldKey))))
             true
         }
-        if (block) pointCaptureService.beginBlockCapture(player, moduleId, handler)
-        else pointCaptureService.beginPositionCapture(player, moduleId, handler)
+        when {
+            block -> pointCaptureService.beginBlockCapture(player, moduleId, handler)
+            precise -> pointCaptureService.beginExactPositionCapture(player, moduleId, handler)
+            else -> pointCaptureService.beginPositionCapture(player, moduleId, handler)
+        }
     }
 
     /** 启动骨头右键生成器位置采集，并保留 Dialog 中的队伍、类型和刷新间隔。 */
@@ -555,8 +971,8 @@ class BedWarsManagedGameEditor(
             return missing(player, "bedwars.editor_parent_missing")
         }
         if (activeEditedGame(player, game.globalId) == null) return
-        pointCaptureService.beginPositionCapture(player, moduleId) { capturePlayer, location ->
-            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginPositionCapture false
+        pointCaptureService.beginExactPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@beginExactPositionCapture false
             val point = BedWarsPoint.from(location)
             val savedId = if (teamId != null) {
                 configService.upsertManagedTeamGenerator(currentGame, teamId, generatorId, type, point, interval)
@@ -565,7 +981,7 @@ class BedWarsManagedGameEditor(
             }
             if (savedId == null) {
                 missing(capturePlayer, "bedwars.editor_parent_missing")
-                return@beginPositionCapture false
+                return@beginExactPositionCapture false
             }
             capturePlayer.sendMessage(Component.text(language.getMessage(
                 if (teamScoped) "bedwars.editor_team_generator_saved" else "bedwars.editor_generator_saved",
@@ -573,6 +989,189 @@ class BedWarsManagedGameEditor(
             )))
             true
         }
+    }
+
+    /** 使用骨头连续创建同类型、同间隔且 ID 自动递增的公共钻石或绿宝石生成器。 */
+    private fun startPublicGeneratorBatchCapture(
+        player: Player,
+        game: ManagedGameConfig,
+        type: BedWarsGeneratorType
+    ) {
+        if (type != BedWarsGeneratorType.DIAMOND && type != BedWarsGeneratorType.EMERALD) {
+            missing(player, "bedwars.editor_generator_batch_type_invalid")
+            return
+        }
+        if (activeEditedGame(player, game.globalId) == null) return
+        val interval = defaultGeneratorInterval(type)
+        player.sendMessage(Component.text(language.getMessage(
+            "bedwars.editor_generator_batch_started",
+            type.name,
+            interval
+        )))
+        pointCaptureService.beginExactPositionCapture(player, moduleId) { capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId)
+                ?: return@beginExactPositionCapture false
+            val generatorId = nextBatchGeneratorId(currentGame, type)
+            val savedId = configService.upsertManagedGenerator(
+                currentGame,
+                generatorId,
+                type,
+                BedWarsPoint.from(location),
+                interval
+            ) ?: return@beginExactPositionCapture false
+            capturePlayer.sendMessage(Component.text(language.getMessage(
+                "bedwars.editor_generator_saved",
+                savedId
+            )))
+            true
+        }
+    }
+
+    /** 读取模块当前第一阶段配置或标准回退值作为资源点创建间隔。 */
+    private fun defaultGeneratorInterval(type: BedWarsGeneratorType): Int {
+        return configService.current().generatorRules.tier(type, 0)?.intervalTicks ?: when (type) {
+            BedWarsGeneratorType.DIAMOND -> 600
+            BedWarsGeneratorType.EMERALD -> 1200
+            BedWarsGeneratorType.IRON -> 40
+            BedWarsGeneratorType.GOLD -> 120
+        }
+    }
+
+    /** 按指定公共资源类型现有最大编号生成下一个 `<type>-<number>` ID。 */
+    private fun nextBatchGeneratorId(game: ManagedGameConfig, type: BedWarsGeneratorType): String {
+        val prefix = type.name.lowercase()
+        val used = configService.readManagedGame(game).generators.map(BedWarsGeneratorConfig::id).toSet()
+        val pattern = Regex("^${Regex.escape(prefix)}-(\\d+)$")
+        var index = used.mapNotNull { id -> pattern.matchEntire(id)?.groupValues?.get(1)?.toLongOrNull() }
+            .maxOrNull()
+            ?.takeIf { it < Long.MAX_VALUE }
+            ?.plus(1L)
+            ?: 1L
+        while ("$prefix-$index" in used) index++
+        return "$prefix-$index"
+    }
+
+    /** 启动队伍出生、床、商人、回收点及铁金生成器的一键顺序采集。 */
+    private fun startTeamCaptureWizard(player: Player, game: ManagedGameConfig, teamId: String?) {
+        val selectedTeamId = teamId?.takeIf(String::isNotBlank)
+            ?: return missing(player, "bedwars.editor_team_id_missing")
+        val currentGame = activeEditedGame(player, game.globalId) ?: return
+        if (configService.readManagedGame(currentGame).teams.none { it.id.equals(selectedTeamId, true) }) {
+            fail(player, "bedwars.editor_team_missing", selectedTeamId)
+            return
+        }
+        player.sendMessage(Component.text(language.getMessage(
+            "bedwars.editor_team_wizard_started",
+            selectedTeamId,
+            TEAM_WIZARD_STEP_COUNT
+        )))
+        beginTeamCaptureWizardStep(player, currentGame, selectedTeamId, 0)
+    }
+
+    /** 启动队伍向导指定步骤，并在保存成功后自动切换下一种采集模式。 */
+    private fun beginTeamCaptureWizardStep(
+        player: Player,
+        game: ManagedGameConfig,
+        teamId: String,
+        step: Int
+    ) {
+        val handler: (Player, Location) -> Boolean = handler@{ capturePlayer, location ->
+            val currentGame = activeEditedGame(capturePlayer, game.globalId) ?: return@handler false
+            val saved = saveTeamWizardStep(currentGame, teamId, step, location)
+            if (!saved) {
+                fail(capturePlayer, "bedwars.editor_team_missing", teamId)
+                return@handler false
+            }
+            capturePlayer.sendMessage(Component.text(language.getMessage(
+                "bedwars.editor_team_wizard_step_saved",
+                language.getMessage(teamWizardStepKey(step))
+            )))
+            val nextStep = step + 1
+            if (nextStep >= TEAM_WIZARD_STEP_COUNT) {
+                capturePlayer.sendMessage(Component.text(language.getMessage(
+                    "bedwars.editor_team_wizard_completed",
+                    teamId
+                )))
+                return@handler false
+            }
+            beginTeamCaptureWizardStep(capturePlayer, currentGame, teamId, nextStep)
+            true
+        }
+        when (step) {
+            TEAM_WIZARD_BED -> pointCaptureService.beginBlockCapture(player, moduleId, handler)
+            TEAM_WIZARD_SHOP,
+            TEAM_WIZARD_UPGRADE,
+            TEAM_WIZARD_IRON,
+            TEAM_WIZARD_GOLD -> pointCaptureService.beginExactPositionCapture(player, moduleId, handler)
+            else -> pointCaptureService.beginPositionCapture(player, moduleId, handler)
+        }
+        player.sendMessage(Component.text(language.getMessage(
+            "bedwars.editor_team_wizard_prompt",
+            step + 1,
+            TEAM_WIZARD_STEP_COUNT,
+            language.getMessage(teamWizardStepKey(step)),
+            language.getMessage(if (step == TEAM_WIZARD_BED) "bedwars.editor_team_wizard_left_click" else "bedwars.editor_team_wizard_right_click")
+        )))
+    }
+
+    /** 保存队伍向导当前步骤的点位或标准铁金生成器。 */
+    private fun saveTeamWizardStep(
+        game: ManagedGameConfig,
+        teamId: String,
+        step: Int,
+        location: Location
+    ): Boolean {
+        val point = BedWarsPoint.from(location)
+        return when (step) {
+            TEAM_WIZARD_SPAWN -> configService.saveManagedTeamPoint(game, teamId, "spawn", point)
+            TEAM_WIZARD_BED -> configService.saveManagedTeamPoint(game, teamId, "bed", point)
+            TEAM_WIZARD_SHOP -> configService.saveManagedTeamPoint(game, teamId, "shop", point)
+            TEAM_WIZARD_UPGRADE -> configService.saveManagedTeamPoint(game, teamId, "upgrade-shop", point)
+            TEAM_WIZARD_KILL_DROPS -> configService.saveManagedTeamPoint(game, teamId, "kill-drops", point)
+            TEAM_WIZARD_IRON -> configService.upsertManagedTeamGenerator(
+                game,
+                teamId,
+                "iron",
+                BedWarsGeneratorType.IRON,
+                point,
+                currentTeamGeneratorInterval(game, teamId, BedWarsGeneratorType.IRON)
+            ) != null
+            TEAM_WIZARD_GOLD -> configService.upsertManagedTeamGenerator(
+                game,
+                teamId,
+                "gold",
+                BedWarsGeneratorType.GOLD,
+                point,
+                currentTeamGeneratorInterval(game, teamId, BedWarsGeneratorType.GOLD)
+            ) != null
+            else -> false
+        }
+    }
+
+    /** 保留队伍已有铁金生成间隔，首次创建时使用模块标准间隔。 */
+    private fun currentTeamGeneratorInterval(
+        game: ManagedGameConfig,
+        teamId: String,
+        type: BedWarsGeneratorType
+    ): Int {
+        return configService.readManagedGame(game).teams
+            .firstOrNull { it.id.equals(teamId, true) }
+            ?.generators
+            ?.firstOrNull { it.id.equals(type.name, true) || it.type == type }
+            ?.intervalTicks
+            ?: defaultGeneratorInterval(type)
+    }
+
+    /** 返回队伍一键采集步骤对应的本地化字段名称。 */
+    private fun teamWizardStepKey(step: Int): String = when (step) {
+        TEAM_WIZARD_SPAWN -> "bedwars.editor_field_team_spawn"
+        TEAM_WIZARD_BED -> "bedwars.editor_field_team_bed"
+        TEAM_WIZARD_SHOP -> "bedwars.editor_field_team_shop"
+        TEAM_WIZARD_UPGRADE -> "bedwars.editor_field_team_upgrade"
+        TEAM_WIZARD_KILL_DROPS -> "bedwars.editor_field_team_kill_drops"
+        TEAM_WIZARD_IRON -> "bedwars.editor_field_team_iron_generator"
+        TEAM_WIZARD_GOLD -> "bedwars.editor_field_team_gold_generator"
+        else -> "bedwars.editor_none"
     }
 
     private fun removeGenerator(
@@ -659,11 +1258,6 @@ class BedWarsManagedGameEditor(
         menu.set("Inputs.$id.max_length", maxLength)
     }
 
-    private fun button(menu: YamlConfiguration, id: String, textKey: String, game: ManagedGameConfig, action: String) {
-        menu.set("Bottom.buttons.$id.text", language.getMessage(textKey))
-        menu.set("Bottom.buttons.$id.actions", listOf("kgc:module-game-action ${game.globalId} $action"))
-    }
-
     private fun variable(variables: Map<String, String>, key: String): String? {
         return variables[key]?.trim()?.takeIf(String::isNotBlank)
     }
@@ -679,5 +1273,17 @@ class BedWarsManagedGameEditor(
     private fun fail(player: Player, key: String, vararg args: Any): Boolean {
         player.sendMessage(Component.text(language.getMessage(key, *args)))
         return false
+    }
+
+    private companion object {
+        val DEFAULT_TEAM_IDS = listOf("red", "blue", "green", "yellow", "aqua", "white", "pink", "gray")
+        const val TEAM_WIZARD_SPAWN = 0
+        const val TEAM_WIZARD_BED = 1
+        const val TEAM_WIZARD_SHOP = 2
+        const val TEAM_WIZARD_UPGRADE = 3
+        const val TEAM_WIZARD_KILL_DROPS = 4
+        const val TEAM_WIZARD_IRON = 5
+        const val TEAM_WIZARD_GOLD = 6
+        const val TEAM_WIZARD_STEP_COUNT = 7
     }
 }

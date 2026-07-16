@@ -2,6 +2,8 @@ package org.katacr.kaGameCenter.api
 
 import org.bukkit.event.Listener
 import org.bukkit.event.HandlerList
+import org.bukkit.permissions.Permission
+import org.bukkit.permissions.PermissionDefault
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.scheduler.BukkitTask
 import org.katacr.kaGameCenter.broadcast.RoomBroadcastService
@@ -11,12 +13,15 @@ import org.katacr.kaGameCenter.chat.GameChatService
 import org.katacr.kaGameCenter.dialog.GameCenterMenuService
 import org.katacr.kaGameCenter.editor.MapEditorService
 import org.katacr.kaGameCenter.editor.EditorPointCaptureService
+import org.katacr.kaGameCenter.display.PlayerStatusDisplayService
 import org.katacr.kaGameCenter.elimination.PlayerEliminationService
 import org.katacr.kaGameCenter.entity.RoomEntityOwnershipService
+import org.katacr.kaGameCenter.entity.RoomPresentationService
 import org.katacr.kaGameCenter.game.GameModule
 import org.katacr.kaGameCenter.game.ManagedGameCatalogService
 import org.katacr.kaGameCenter.game.ModuleGameEditor
 import org.katacr.kaGameCenter.game.GameRoomManager
+import org.katacr.kaGameCenter.friend.FriendService
 import org.katacr.kaGameCenter.i18n.LanguageManager
 import org.katacr.kaGameCenter.menu.chest.ChestMenuDataSource
 import org.katacr.kaGameCenter.menu.chest.ChestMenuService
@@ -26,6 +31,7 @@ import org.katacr.kaGameCenter.packet.PacketDispatchService
 import org.katacr.kaGameCenter.result.GameResultService
 import org.katacr.kaGameCenter.runtime.PlayerRuntimeStateService
 import org.katacr.kaGameCenter.resource.RoomResourceScopeService
+import org.katacr.kaGameCenter.reconnect.RoomReconnectStateService
 import org.katacr.kaGameCenter.selection.SelectionService
 import org.katacr.kaGameCenter.team.GameTeamService
 import org.katacr.kaGameCenter.team.TeamAssignmentService
@@ -42,6 +48,8 @@ class GameModuleContext(
     val plugin: JavaPlugin,
     val api: GameCenterApi,
     val roomManager: GameRoomManager,
+    val friendService: FriendService,
+    val playerStatusDisplayService: PlayerStatusDisplayService,
     val worldService: TemporaryWorldService,
     val languageManager: LanguageManager,
     val packetService: PacketDispatchService,
@@ -56,6 +64,7 @@ class GameModuleContext(
     val chestMenuService: ChestMenuService,
     val roomTaskService: RoomTaskService,
     val entityOwnershipService: RoomEntityOwnershipService,
+    val roomPresentationService: RoomPresentationService,
     val resultService: GameResultService,
     val playerRuntimeStateService: PlayerRuntimeStateService,
     val roomBroadcastService: RoomBroadcastService,
@@ -63,6 +72,7 @@ class GameModuleContext(
     val eliminationService: PlayerEliminationService,
     val spectatorService: SpectatorService,
     val roomResourceScopeService: RoomResourceScopeService,
+    val reconnectStateService: RoomReconnectStateService,
     val managedMapPointService: ManagedMapPointService,
     val spawnAssignmentService: SpawnAssignmentService,
     private val moduleAdminRegistry: MutableMap<String, ModuleAdminCommand>
@@ -74,6 +84,7 @@ class GameModuleContext(
     private val gameEditors = mutableListOf<ModuleGameEditor>()
     private val chatFormatters = mutableListOf<GameChatFormatter>()
     private val chestMenuDataSources = mutableListOf<Pair<String, ChestMenuDataSource>>()
+    private val permissions = mutableListOf<Permission>()
 
     fun registerModule(module: GameModule) {
         api.registerModule(module)
@@ -106,6 +117,21 @@ class GameModuleContext(
         chestMenuDataSources.add(namespacedType to source)
     }
 
+    /** 注册模块私有权限，并在模块卸载时按 Permission 实例自动移除。 */
+    @JvmOverloads
+    fun registerPermission(
+        name: String,
+        description: String = "",
+        defaultValue: PermissionDefault = PermissionDefault.OP
+    ): Permission {
+        require(name.isNotBlank()) { "Permission name cannot be blank" }
+        plugin.server.pluginManager.getPermission(name)?.let { return it }
+        val permission = Permission(name, description, defaultValue)
+        plugin.server.pluginManager.addPermission(permission)
+        permissions.add(permission)
+        return permission
+    }
+
     fun trackTask(task: BukkitTask): BukkitTask {
         tasks.add(task)
         return task
@@ -131,6 +157,12 @@ class GameModuleContext(
             chestMenuService.dataSources.unregister(type, source)
         }
         chestMenuDataSources.clear()
+        permissions.asReversed().forEach { permission ->
+            if (plugin.server.pluginManager.getPermission(permission.name) === permission) {
+                plugin.server.pluginManager.removePermission(permission)
+            }
+        }
+        permissions.clear()
         adminCommands.asReversed().forEach { command ->
             moduleAdminRegistry.entries.removeIf { it.value === command }
         }

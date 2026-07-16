@@ -27,6 +27,7 @@ command:
   only_player_enter: "Only players can enter the demo world."
   only_player_packet: "Only players can run packet tests."
   only_player_icon: "Only players can run icon text tests."
+  only_player_friend: "Only players can use friend features."
   usage: "Usage: /{0} help; admin usage: /{0} admin help"
   help: |-
     §6KaGameCenter Commands
@@ -40,7 +41,9 @@ command:
     §e/{0} create <gameId> [mapPath] [roomName] §7Create a room
     §e/{0} join <roomId> §7Join a room
     §e/{0} quickjoin [gameId] §7Quick join or create a room
+    §e/{0} friend [list|add|accept|deny|remove|join|spectate|msg] §7Manage friends
     §e/{0} leave §7Leave current room
+    §c/{0} reload <config|lang|map|model> ... §7Reload core resources or managed modules
     §c/{0} admin help §7Show admin commands
   admin_help: |-
     §6KaGameCenter Admin Commands
@@ -68,6 +71,18 @@ command:
   no_games: "No games registered."
   no_stats: "No stats recorded."
   no_permission: "You do not have permission to do that."
+
+reload:
+  usage: "Usage: /{0} reload <config|lang|map|model>; module reload: /{0} reload model <moduleId|all>"
+  config_success: "Core configuration reloaded; startup services such as the database and Velocity bridge were not rebuilt."
+  lang_success: "Core language reloaded. Current language: {0}."
+  map_success: "Core public map template directory refreshed; module game configs, private snapshots, and active rooms were not changed."
+  failed: "Failed to reload {0}: {1}"
+  no_modules: "No managed game modules are available to reload."
+  module_success: "Reloaded module {0} v{1}; closed {2} room(s) and {3} editor session(s)."
+  module_disabled: "Unloaded module {0}, which is disabled by configuration; closed {1} room(s) and {2} editor session(s)."
+  module_failed: "Failed to reload module {0}; closed {1} room(s) and {2} editor session(s). Reason: {3}"
+  all_summary: "Module reload complete: {0} succeeded, {1} failed."
 
 packet:
   unavailable: "PacketEvents is unavailable; packet tests cannot run."
@@ -107,6 +122,58 @@ chat:
   team_format: "§8[§bTeam {2}§8] §f{3}: §r{4}"
   spy_format: "§8[§7Spy {0}§8] §7{1}"
 
+friend:
+  usage: "Usage: /{0} friend <list|add|accept|deny|remove|join|spectate|msg> [player or UUID]"
+  message_usage: "Usage: /{0} friend msg <player or UUID> <message>"
+  target_required: "§cEnter a player name or UUID."
+  player_not_found: "§cNo previously joined player found: {0}"
+  not_friends: "§cYou and {0} are not friends."
+  friend_offline: "§eFriend {0} is offline."
+  friend_not_in_room: "§eFriend {0} is not in a game room."
+  joined_room: "§aJoined friend {0}'s room {1}."
+  spectating_room: "§bSpectating friend {0}'s room {1}."
+  request_received: "§e{0} sent you a friend request. Use /{1} friend accept {2} to accept."
+  request_accepted_target: "§a{0} accepted your friend request."
+  result_sent: "§aSent a friend request to {0}."
+  result_accepted: "§aYou and {0} are now friends."
+  result_denied: "§7Denied {0}'s friend request."
+  result_removed: "§eRemoved friend {0}."
+  result_self: "§cYou cannot perform friend operations on yourself."
+  result_already_friends: "§eYou and {0} are already friends."
+  result_request_already_sent: "§eYou already sent a request to {0}."
+  result_incoming_request_exists: "§e{0} already sent you a request; accept or deny it first."
+  result_request_not_found: "§cNo friend request from {0} was found."
+  result_not_friends: "§cYou and {0} are not friends."
+  list_title: "Friends"
+  list_empty: "No friends yet."
+  list_hover: "Click to prepare a private message"
+  requests_title: "Pending Requests"
+  request_hover: "Click to accept this request"
+  status_online: "online"
+  status_offline: "offline"
+  message_sent: "§d[To {0}] §f{1}"
+  message_received: "§d[From {0}] §r{1}"
+  message_empty: "§cPrivate message cannot be empty."
+  menu_title: "&6Friends"
+  menu_summary: "&7Friends: &f{0} &8| &7Pending requests: &f{1}"
+  detail_title: "&6Friend {0}"
+  detail_status: "&7Player: &f{0} &8| &7Status: &f{1}"
+  message_title: "&6Message {0}"
+  input_player: "&aPlayer name or UUID"
+  input_message: "&dPrivate message"
+  button_add: "&a[ Add Friend ]"
+  button_accept: "&a[ Accept ]"
+  button_deny: "&c[ Deny ]"
+  button_pending: "&e[ Request Pending ]"
+  button_message: "&d[ Message ]"
+  button_join: "&a[ Join Room ]"
+  button_spectate: "&b[ Spectate Friend ]"
+  button_remove: "&c[ Remove Friend ]"
+  button_send: "&a[ Send ]"
+  request_button: "&e[ Request ] &f{0}"
+  request_menu_tooltip: "&7Click to accept; use the command to deny."
+  friend_button: "&f[ {0} ]"
+
 selection:
   point_set: "§aSet {0}: §f{1} {2} {3} {4}"
   ready: "§aSelection ready: §f{0} ({1},{2},{3}) -> ({4},{5},{6})"
@@ -115,9 +182,10 @@ selection:
 editor_capture:
   tool_name: "Map configuration capture tool"
   tool_left: "Left-click block: capture block or container"
-  tool_right: "Right-click: capture your integer block position"
+  tool_right: "Right-click: capture your position (integer or exact as prompted)"
   block_started: "§aContinuous block capture started. Hold the bone and left-click target blocks; reopen the editor to switch actions."
   position_started: "§aContinuous position capture started. Hold the bone and right-click to save your integer block position; reopen the editor to switch actions."
+  exact_position_started: "§aContinuous exact-position capture started. Stand at the target and right-click with the bone to preserve decimal coordinates; reopen the editor to stop or switch actions."
   block_required: "§cThis operation requires left-clicking a target block or container with the bone."
   position_required: "§cThis operation requires right-clicking with the bone to capture your current position."
   captured: "§aCaptured {0} point(s) this session: §f{1} {2} {3} {4}"
@@ -169,9 +237,6 @@ stats:
   losses: "&cLosses: &f{0}"
   kills: "&eTotal Kills: &f{0}"
   deaths: "&7Total Deaths: &f{0}"
-  final_kills: "&cFinal Kills: &f{0}"
-  final_deaths: "&8Final Deaths: &f{0}"
-  beds_destroyed: "&dBeds Destroyed: &f{0}"
   points: "&bPoints: &f{0}"
   metric_generic: "&7{0}: &f{1}"
   button_overview: "&b[ All Games ]"
@@ -297,10 +362,9 @@ menu:
   button_rooms: "&b[ Room List ]"
   button_create_room: "&a[ Create Room ]"
   button_stats: "&6[ Personal Statistics ]"
+  button_friends: "&d[ Friends ]"
   button_room_detail: "&e[ Room Detail ]"
   button_join_room_list: "&b[ Join Room ]"
-  button_create_default_room: "&a[ Create Parkour Room ]"
-  button_quickjoin: "&e[ Quick Join Parkour ]"
   button_maps: "&d[ Map Management ]"
   button_leave: "&c[ Leave Room ]"
   button_close: "&8[ Close ]"
@@ -327,6 +391,10 @@ menu:
   game_tooltip_optional_plugins: "&7Optional plugins: &f{0}"
   room_button: "&8[&e{0}&8] &f{1} &8[&a{2}&8][&d{3}&8] &8[&b{4}&7/&b{5}&8] &6{6}"
   member_empty: "&8[ Empty Room ]"
+  player_list_header: "&8------- &fPlayers &8-------"
+  team_players_header: "&8------- &f{0} Players &8-------"
+  ungrouped_players_header: "&8------- &7Ungrouped Players &8-------"
+  join_team_text: "&a[Join {0}]"
   member_button: "&f[ {0} ]"
   member_tooltip: "&7UUID: &f{0}"
   member_state_owner: "&7Owner: &f{0}"

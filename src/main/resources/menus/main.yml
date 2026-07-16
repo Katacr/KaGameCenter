@@ -30,6 +30,11 @@ Bottom:
       width: 150
       actions:
         - "kgc:open-stats"
+    friends:
+      text: "{menu.button_friends}"
+      width: 150
+      actions:
+        - "kgc:open-friends"
     leave:
       text: "{menu.button_leave}"
       width: 150

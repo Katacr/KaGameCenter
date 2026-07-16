@@ -1,12 +1,11 @@
 package org.katacr.kaGameCenter.display
 
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.bossbar.BossBar
 import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.format.TextColor
 import net.kyori.adventure.title.Title
 import org.bukkit.Bukkit
-import org.bukkit.boss.BarColor
-import org.bukkit.boss.BarStyle
-import org.bukkit.boss.BossBar
 import org.bukkit.entity.Player
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.scoreboard.Criteria
@@ -24,26 +23,26 @@ import java.util.UUID
 class GameDisplayService(
     @Suppress("unused") private val plugin: JavaPlugin,
     private val languageManager: LanguageManager,
-    private val teamService: GameTeamService
+    private val teamService: GameTeamService,
+    private val playerStatusDisplayService: PlayerStatusDisplayService
 ) {
     private val roomDisplays = linkedMapOf<String, RoomDisplay>()
     private val playerOriginalScoreboards = linkedMapOf<UUID, Scoreboard>()
     private val playerOriginalListNames = linkedMapOf<UUID, Component?>()
     private val playerOriginalListOrders = linkedMapOf<UUID, Int>()
-    private val playerOriginalListHeaders = linkedMapOf<UUID, String>()
-    private val playerOriginalListFooters = linkedMapOf<UUID, String>()
+    private val playerOriginalListHeaders = linkedMapOf<UUID, Component>()
+    private val playerOriginalListFooters = linkedMapOf<UUID, Component>()
 
     fun attach(player: Player, room: GameRoom) {
         val display = roomDisplays.getOrPut(room.id) { createDisplay(room) }
         playerOriginalScoreboards.putIfAbsent(player.uniqueId, player.scoreboard)
         playerOriginalListNames.putIfAbsent(player.uniqueId, player.playerListName())
         playerOriginalListOrders.putIfAbsent(player.uniqueId, player.playerListOrder)
-        playerOriginalListHeaders.putIfAbsent(player.uniqueId, player.playerListHeader ?: "")
-        playerOriginalListFooters.putIfAbsent(player.uniqueId, player.playerListFooter ?: "")
+        playerOriginalListHeaders.putIfAbsent(player.uniqueId, player.playerListHeader() ?: Component.empty())
+        playerOriginalListFooters.putIfAbsent(player.uniqueId, player.playerListFooter() ?: Component.empty())
         if (!room.session.usesCustomScoreboard()) {
             player.scoreboard = display.scoreboard
         }
-        display.bossBar.addPlayer(player)
         showTitle(
             player,
             languageManager.getMessage("display.title_joined", room.definition?.displayName ?: room.module.displayName),
@@ -54,13 +53,13 @@ class GameDisplayService(
     }
 
     fun detach(player: Player, room: GameRoom) {
-        roomDisplays[room.id]?.bossBar?.removePlayer(player)
+        playerStatusDisplayService.removeViewer(room.id, player)
         playerOriginalScoreboards.remove(player.uniqueId)?.let { player.scoreboard = it }
         player.playerListName(playerOriginalListNames.remove(player.uniqueId))
         playerOriginalListOrders.remove(player.uniqueId)?.let { player.playerListOrder = it }
-        player.setPlayerListHeaderFooter(
-            playerOriginalListHeaders.remove(player.uniqueId) ?: "",
-            playerOriginalListFooters.remove(player.uniqueId) ?: ""
+        player.sendPlayerListHeaderAndFooter(
+            playerOriginalListHeaders.remove(player.uniqueId) ?: Component.empty(),
+            playerOriginalListFooters.remove(player.uniqueId) ?: Component.empty()
         )
         player.resetTitle()
         sendActionBar(player, languageManager.getMessage("display.action_left"))
@@ -116,25 +115,38 @@ class GameDisplayService(
         val elapsedSeconds = ((System.currentTimeMillis() - display.createdAtMillis) / 1000L).toInt()
         val stateName = languageManager.getStateName(room.state)
 
-        display.bossBar.setTitle(languageManager.getMessage(
-            "display.bossbar",
-            room.definition?.displayName ?: room.module.displayName,
-            stateName,
-            room.players.size,
-            maxPlayers
-        ))
-        display.bossBar.progress = when (room.state) {
+        val progress = when (room.state) {
             GameState.CREATED -> 0.1
             GameState.PREPARING -> 0.25
             GameState.WAITING -> 0.5
             GameState.COUNTDOWN -> 0.75
             GameState.RUNNING -> 1.0
             GameState.ENDING, GameState.CLOSED -> 0.0
+        }.toFloat()
+        val color = when (room.state) {
+            GameState.RUNNING -> BossBar.Color.GREEN
+            GameState.ENDING, GameState.CLOSED -> BossBar.Color.RED
+            else -> BossBar.Color.BLUE
         }
-        display.bossBar.color = when (room.state) {
-            GameState.RUNNING -> BarColor.GREEN
-            GameState.ENDING, GameState.CLOSED -> BarColor.RED
-            else -> BarColor.BLUE
+        val viewers = (room.players + room.spectators).mapNotNull(Bukkit::getPlayer)
+        val customStatus = room.session.bossBarStatus()
+        if (customStatus == null) {
+            playerStatusDisplayService.update(
+                room.id,
+                viewers,
+                IconTextParser.parse(languageManager.getMessage(
+                    "display.bossbar",
+                    room.definition?.displayName ?: room.module.displayName,
+                    stateName,
+                    room.players.size,
+                    maxPlayers
+                )),
+                progress,
+                color,
+                BossBar.Overlay.NOTCHED_10
+            )
+        } else {
+            playerStatusDisplayService.update(room.id, viewers, customStatus)
         }
 
         if (!room.session.usesCustomScoreboard()) {
@@ -160,19 +172,19 @@ class GameDisplayService(
     }
 
     fun clearRoom(room: GameRoom) {
+        playerStatusDisplayService.clearRoom(room.id)
         val display = roomDisplays.remove(room.id) ?: return
-        display.bossBar.removeAll()
         display.scoreboard.clearSlot(DisplaySlot.SIDEBAR)
         display.objective.unregister()
     }
 
     fun clearAll() {
         roomDisplays.values.forEach {
-            it.bossBar.removeAll()
             it.scoreboard.clearSlot(DisplaySlot.SIDEBAR)
             it.objective.unregister()
         }
         roomDisplays.clear()
+        playerStatusDisplayService.clearAll()
         playerOriginalListNames.forEach { (playerId, name) ->
             Bukkit.getPlayer(playerId)?.playerListName(name)
         }
@@ -181,7 +193,7 @@ class GameDisplayService(
         }
         playerOriginalListHeaders.forEach { (playerId, header) ->
             val player = Bukkit.getPlayer(playerId) ?: return@forEach
-            player.setPlayerListHeaderFooter(header, playerOriginalListFooters[playerId] ?: "")
+            player.sendPlayerListHeaderAndFooter(header, playerOriginalListFooters[playerId] ?: Component.empty())
         }
         playerOriginalScoreboards.clear()
         playerOriginalListNames.clear()
@@ -217,8 +229,7 @@ class GameDisplayService(
         )
         objective.setDisplaySlot(DisplaySlot.SIDEBAR)
 
-        val bossBar = Bukkit.createBossBar("", BarColor.BLUE, BarStyle.SEGMENTED_10)
-        return RoomDisplay(scoreboard, objective, bossBar, System.currentTimeMillis())
+        return RoomDisplay(scoreboard, objective, System.currentTimeMillis())
     }
 
     private fun updateSidebar(display: RoomDisplay, lines: List<String>) {
@@ -244,8 +255,8 @@ class GameDisplayService(
             .sortedBy { it.name.lowercase() }
         val customHeaderFooter = room.session.usesCustomTabHeaderFooter()
         val customPlayerNames = room.session.usesCustomTabPlayerNames()
-        val header = if (customHeaderFooter) "" else buildTabHeader(room, teams)
-        val footer = if (customHeaderFooter) "" else buildTabFooter(room, teams)
+        val header = if (customHeaderFooter) Component.empty() else buildTabHeader(room, teams)
+        val footer = if (customHeaderFooter) Component.empty() else buildTabFooter(room, teams)
 
         if (teams.isEmpty()) {
             players.sortedBy { it.name.lowercase() }.forEachIndexed { index, player ->
@@ -253,9 +264,9 @@ class GameDisplayService(
                     .tabPlayerListOrder(player, TAB_BASE_ORDER + index)
                     .coerceAtLeast(0)
                 if (!customPlayerNames) {
-                    player.playerListName(Component.text(languageManager.getMessage("display.tab_player", player.name), NamedTextColor.WHITE))
+                    player.playerListName(tabComponent(languageManager.getMessage("display.tab_player", player.name), NamedTextColor.WHITE))
                 }
-                if (!customHeaderFooter) player.setPlayerListHeaderFooter(header, footer)
+                if (!customHeaderFooter) player.sendPlayerListHeaderAndFooter(header, footer)
             }
         } else {
             val orderByPlayer = linkedMapOf<UUID, Int>()
@@ -266,7 +277,10 @@ class GameDisplayService(
                     .forEachIndexed { slotIndex, player ->
                         orderByPlayer[player.uniqueId] = TAB_BASE_ORDER + teamIndex * TEAM_MEMBER_SLOTS + slotIndex
                         if (!customPlayerNames) {
-                            player.playerListName(Component.text(languageManager.getMessage("display.tab_team_player", team.displayName, player.name), NamedTextColor.WHITE))
+                            player.playerListName(tabComponent(
+                                languageManager.getMessage("display.tab_team_player", team.displayName, player.name),
+                                team.color ?: NamedTextColor.WHITE
+                            ))
                         }
                     }
             }
@@ -277,14 +291,17 @@ class GameDisplayService(
                 .forEachIndexed { index, player ->
                     orderByPlayer[player.uniqueId] = TAB_UNGROUPED_ORDER + index
                     if (!customPlayerNames) {
-                        player.playerListName(Component.text(languageManager.getMessage("display.tab_ungrouped_player", player.name), NamedTextColor.GRAY))
+                        player.playerListName(tabComponent(
+                            languageManager.getMessage("display.tab_ungrouped_player", player.name),
+                            NamedTextColor.GRAY
+                        ))
                     }
                 }
 
             players.forEachIndexed { fallbackIndex, player ->
                 val defaultOrder = orderByPlayer[player.uniqueId] ?: (TAB_UNGROUPED_ORDER + fallbackIndex)
                 player.playerListOrder = room.session.tabPlayerListOrder(player, defaultOrder).coerceAtLeast(0)
-                if (!customHeaderFooter) player.setPlayerListHeaderFooter(header, footer)
+                if (!customHeaderFooter) player.sendPlayerListHeaderAndFooter(header, footer)
             }
         }
 
@@ -292,47 +309,53 @@ class GameDisplayService(
             player.playerListOrder = room.session
                 .tabPlayerListOrder(player, TAB_SPECTATOR_ORDER + index)
                 .coerceAtLeast(0)
-            if (!customHeaderFooter) player.setPlayerListHeaderFooter(header, footer)
+            if (!customHeaderFooter) player.sendPlayerListHeaderAndFooter(header, footer)
         }
     }
 
-    private fun buildTabHeader(room: GameRoom, teams: List<GameTeam>): String {
+    private fun buildTabHeader(room: GameRoom, teams: List<GameTeam>): Component {
         val maxPlayers = room.definition?.maxPlayers ?: room.module.maxPlayers
-        return languageManager.getMessage(
+        return tabComponent(languageManager.getMessage(
             "display.tab_header",
             room.definition?.displayName ?: room.module.displayName,
             room.id,
             languageManager.getStateName(room.state),
             room.players.size,
             maxPlayers
-        )
+        ), NamedTextColor.WHITE)
     }
 
-    private fun buildTabFooter(room: GameRoom, teams: List<GameTeam>): String {
-        if (teams.isEmpty()) {
+    private fun buildTabFooter(room: GameRoom, teams: List<GameTeam>): Component {
+        val text = if (teams.isEmpty()) {
             val players = room.players
                 .map { Bukkit.getPlayer(it)?.name ?: Bukkit.getOfflinePlayer(it).name ?: it.toString().take(8) }
                 .chunked(SOLO_MEMBER_COLUMNS)
                 .joinToString("\n") { row -> row.joinToString("    ") { languageManager.getMessage("display.tab_slot_player", it) } }
                 .ifBlank { languageManager.getMessage("display.tab_empty_room") }
-            return languageManager.getMessage("display.tab_footer_solo", players)
-        }
-
-        val headers = teams.joinToString("    ") { languageManager.getMessage("display.tab_slot_team", it.displayName) }
-        val rows = (0 until TEAM_MEMBER_SLOTS).joinToString("\n") { slot ->
-            teams.joinToString("    ") { team ->
-                val member = teamService.getMembers(room.id, team.id)
-                    .toList()
-                    .getOrNull(slot)
-                    ?.let { Bukkit.getPlayer(it)?.name ?: Bukkit.getOfflinePlayer(it).name ?: it.toString().take(8) }
-                if (member == null) {
-                    languageManager.getMessage("display.tab_slot_empty")
-                } else {
-                    languageManager.getMessage("display.tab_slot_player", member)
+            languageManager.getMessage("display.tab_footer_solo", players)
+        } else {
+            val headers = teams.joinToString("    ") { languageManager.getMessage("display.tab_slot_team", it.displayName) }
+            val rows = (0 until TEAM_MEMBER_SLOTS).joinToString("\n") { slot ->
+                teams.joinToString("    ") { team ->
+                    val member = teamService.getMembers(room.id, team.id)
+                        .toList()
+                        .getOrNull(slot)
+                        ?.let { Bukkit.getPlayer(it)?.name ?: Bukkit.getOfflinePlayer(it).name ?: it.toString().take(8) }
+                    if (member == null) {
+                        languageManager.getMessage("display.tab_slot_empty")
+                    } else {
+                        languageManager.getMessage("display.tab_slot_player", member)
+                    }
                 }
             }
+            languageManager.getMessage("display.tab_footer_teams", headers, rows)
         }
-        return languageManager.getMessage("display.tab_footer_teams", headers, rows)
+        return tabComponent(text, NamedTextColor.WHITE)
+    }
+
+    /** 解析 Tab 文本颜色和图标，并为未显式着色的内容提供回退颜色。 */
+    private fun tabComponent(text: String, fallbackColor: TextColor): Component {
+        return Component.text().color(fallbackColor).append(IconTextParser.parse(text)).build()
     }
 
     private fun uniqueSuffix(index: Int): String {
@@ -362,7 +385,6 @@ class GameDisplayService(
     private data class RoomDisplay(
         val scoreboard: Scoreboard,
         val objective: Objective,
-        val bossBar: BossBar,
         val createdAtMillis: Long,
         val entries: MutableList<String> = mutableListOf()
     )
