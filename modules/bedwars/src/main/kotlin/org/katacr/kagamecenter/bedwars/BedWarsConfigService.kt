@@ -90,6 +90,8 @@ class BedWarsConfigService(private val dataFolder: File) {
         }
         val minPlayers = config.getInt("game.min-players", 2).coerceIn(2, 100)
         val maxPlayers = config.getInt("game.max-players", 16).coerceIn(minPlayers, 100)
+        val autoStartMinPlayers = config.getInt("game.auto-start-min-players", minPlayers)
+            .coerceIn(minPlayers, maxPlayers)
         val halloweenActive = isHalloweenActive()
         val maps = linkedMapOf<String, BedWarsMapConfig>()
         config.getConfigurationSection("maps")?.getKeys(false)?.forEach { mapId ->
@@ -105,6 +107,7 @@ class BedWarsConfigService(private val dataFolder: File) {
             displayName = config.getString("game.display-name", "起床战争") ?: "起床战争",
             minPlayers = minPlayers,
             maxPlayers = maxPlayers,
+            autoStartMinPlayers = autoStartMinPlayers,
             countdownSeconds = config.getInt(
                 "countdowns.game-start-regular",
                 config.getInt("game.countdown-seconds", 40)
@@ -1493,6 +1496,9 @@ class BedWarsConfigService(private val dataFolder: File) {
             }
             config.set("countdowns.game-start-regular", regularCountdown)
         }
+        if (!config.contains("game.auto-start-min-players")) {
+            config.set("game.auto-start-min-players", config.getInt("game.min-players", 2))
+        }
         if (!config.contains("game.island-radius")) {
             val legacyRadius = if (config.contains("shop.trap-radius")) {
                 config.getFiniteDouble("shop.trap-radius", 17.0)
@@ -1533,6 +1539,7 @@ class BedWarsConfigService(private val dataFolder: File) {
             "game.display-name" to "起床战争",
             "game.min-players" to 2,
             "game.max-players" to 16,
+            "game.auto-start-min-players" to 2,
             "game.default-item-groups.default" to listOf("WOODEN_SWORD"),
             "pre-game-items.stats.material" to "PLAYER_HEAD",
             "pre-game-items.stats.slot" to 0,
